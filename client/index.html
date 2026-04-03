@@ -13,7 +13,7 @@
             --glass: rgba(255, 255, 255, 0.05);
         }
 
-        * { box-sizing: border-box; } /* Crucial fix for layout shifting */
+        * { box-sizing: border-box; }
 
         body { 
             background: var(--dark-bg); 
@@ -64,8 +64,13 @@
             transition: all 0.2s ease;
         }
 
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn-gold { background: var(--uci-gold); color: #000; }
-        .btn-gold:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(255, 210, 0, 0.3); }
+        .btn-gold:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(255, 210, 0, 0.3); }
         .btn-blue { background: var(--uci-blue); color: white; width: 100%; }
 
         .room-card {
@@ -133,7 +138,6 @@
 
         .is-turn { border-color: var(--uci-gold); box-shadow: 0 0 20px rgba(255, 210, 0, 0.4); }
 
-        /* FIXED BOTTOM BAR - Centered correctly now */
         #controls {
             background: rgba(18, 18, 18, 0.95);
             backdrop-filter: blur(15px);
@@ -141,7 +145,7 @@
             position: fixed;
             bottom: 0;
             left: 0;
-            right: 0; /* Ensures full-width centering */
+            right: 0;
             width: 100%;
             display: flex;
             justify-content: center;
@@ -157,7 +161,7 @@
         #my-area {
             text-align: center;
             margin-top: 20px;
-            padding-bottom: 150px; /* Space for fixed bar */
+            padding-bottom: 150px;
         }
     </style>
 </head>
@@ -174,7 +178,7 @@
         <h2 style="margin-top:0">Welcome, <span id="user-display" style="color: var(--uci-gold);"></span></h2>
         <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px; margin-bottom: 20px;">
             <span style="color: #aaa; font-size: 0.9rem;">Current Balance</span>
-            <div style="font-size: 1.8rem; color: #4caf50; font-weight: bold;">$<span id="lobby-bal"></span></div>
+            <div style="font-size: 1.8rem; color: #4caf50; font-weight: bold;">$<span id="lobby-bal">0</span></div>
         </div>
         <button class="btn-blue" onclick="socket.emit('create-room')">Open New Table</button>
         <div id="room-list" style="margin-top: 20px; text-align: left;"></div>
@@ -206,7 +210,7 @@
             <button class="btn-action" id="call-btn" onclick="act('call')">CALL</button>
             
             <div style="display:flex; align-items:center; background: #333; padding: 5px 10px; border-radius: 8px; gap: 10px;">
-                <input type="number" id="raise-amt" placeholder="Bet" style="margin:0; width:80px; background:transparent; border:none; padding:5px;">
+                <input type="number" id="raise-amt" placeholder="Bet" style="margin:0; width:80px; background:transparent; border:none; padding:5px; color:white;">
                 <button class="btn-gold" style="padding: 8px 15px;" onclick="raise()">RAISE</button>
             </div>
 
@@ -232,6 +236,7 @@
         }
 
         socket.on('lobby-list', (data) => {
+            // FIX: Ensure bankroll from server is mapped correctly
             document.getElementById('lobby-bal').innerText = data.bankroll;
             const container = document.getElementById('room-list');
             container.innerHTML = data.list.length === 0 ? "<p style='text-align:center; color:#666;'>No tables available.</p>" : 
@@ -245,23 +250,36 @@
         });
 
         function act(type) { socket.emit('action', { type }); }
+        
         function raise() {
             const amt = document.getElementById('raise-amt').value;
-            if(amt) { socket.emit('action', { type: 'raise', amount: amt }); document.getElementById('raise-amt').value = ''; }
+            if(amt) { 
+                socket.emit('action', { type: 'raise', amount: amt }); 
+                document.getElementById('raise-amt').value = ''; 
+            }
         }
-        function leaveGame() { if(confirm("Cashing out will save your chips to MongoDB. Leave?")) { socket.emit('leave-room'); } }
+
+        function leaveGame() { 
+            if(confirm("Cashing out will save your chips to MongoDB. Leave?")) { 
+                socket.emit('leave-room'); 
+            } 
+        }
 
         socket.on('update', (room) => {
             document.getElementById('lobby').classList.add('hidden');
             document.getElementById('game').classList.remove('hidden');
             document.getElementById('room-display').innerText = room.status === 'playing' ? "LIVE GAME" : "WAITING FOR PLAYERS";
+            
             const me = room.players[socket.id];
             if(!me) return;
+
             document.getElementById('pot-ui').innerText = "$" + room.pot;
             document.getElementById('game-bal').innerText = "$" + me.chips;
             document.getElementById('comm-ui').innerHTML = room.community.map(c => renderCard(c)).join('');
+            
             const oppContainer = document.getElementById('opponents');
             oppContainer.innerHTML = '';
+            
             room.order.forEach(id => {
                 if(id === socket.id) return;
                 const p = room.players[id];
@@ -273,14 +291,32 @@
                         <span class="decision-tag" style="color:var(--uci-gold); font-size:0.7rem;">${p.last || ''}</span>
                     </div>`;
             });
+
+            // FIX: START GAME BUTTON LOGIC
+            const isHost = room.order[0] === socket.id;
+            const isWaiting = room.status === 'waiting';
+            const hostBtn = document.getElementById('host-start');
+
+            if(isHost && isWaiting) {
+                hostBtn.style.display = "block";
+                // Host can only start if there are at least 2 players
+                hostBtn.disabled = room.order.length < 2;
+            } else {
+                hostBtn.style.display = "none";
+            }
+
             const isMyTurn = room.order[room.turn] === socket.id;
             const callDiff = room.highBet - me.bet;
-            document.getElementById('check-btn').style.display = callDiff === 0 ? "inline" : "none";
-            document.getElementById('call-btn').style.display = callDiff === 0 ? "none" : "inline";
+            
+            document.getElementById('check-btn').style.display = (callDiff === 0) ? "inline-block" : "none";
+            document.getElementById('call-btn').style.display = (callDiff > 0) ? "inline-block" : "none";
             document.getElementById('call-btn').innerText = `CALL $${callDiff}`;
-            document.getElementById('host-start').style.display = (room.status === 'waiting' && room.order[0] === socket.id) ? "block" : "none";
+
+            // Disable all buttons if it's not your turn
             document.querySelectorAll('#controls button').forEach(btn => {
-                if(btn.id !== 'host-start') btn.disabled = !isMyTurn || room.status !== 'playing';
+                if(btn.id !== 'host-start') {
+                    btn.disabled = !isMyTurn || room.status !== 'playing';
+                }
             });
         });
 
@@ -294,7 +330,10 @@
             document.getElementById('lobby-bal').innerText = data.bankroll;
         });
 
-        socket.on('done', (d) => { alert(`Winner: ${d.win === socket.id ? "YOU" : "Opponent"}\nAmount: $${d.amount}\nReason: ${d.msg}`); });
+        socket.on('done', (d) => { 
+            alert(`Winner: ${d.win === socket.id ? "YOU" : "Opponent"}\nAmount: $${d.amount}\nReason: ${d.msg}`); 
+        });
+
         socket.on('error-msg', (msg) => alert(msg));
 
         function renderCard(c) {
