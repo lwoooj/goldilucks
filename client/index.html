@@ -56,7 +56,10 @@
             <span id="hud-username">---</span>
         </div>
         <div class="hud-center"><span id="hud-balance" style="color: #4caf50;">$0</span></div>
-        <div class="hud-right"><span style="color: var(--uci-gold); font-size: 0.7rem; display:block; text-align:right;">UCI POKER</span><small style="font-size:0.6rem; color:#888;">v2.0.3</small></div>
+        <div class="hud-right">
+            <span style="color: var(--uci-gold); font-size: 0.7rem; display:block; text-align:right;">SESSION</span>
+            <div id="hud-percent" style="font-size:0.9rem; font-weight:bold; text-align:right;">0%</div>
+        </div>
     </div>
 
     <div id="auth-container">
@@ -131,6 +134,24 @@
 
             document.getElementById('hud-username').innerText = me.username;
             document.getElementById('hud-balance').innerText = "$" + me.chips.toLocaleString();
+
+            const percentEl = document.getElementById('hud-percent');
+            if (me.startChips && me.startChips > 0) {
+                const diff = me.chips - me.startChips;
+                const percent = ((diff / me.startChips) * 100).toFixed(1);
+                
+                if (diff > 0) {
+                    percentEl.innerText = `+${percent}%`;
+                    percentEl.style.color = "#4caf50"; // Green
+                } else if (diff < 0) {
+                    percentEl.innerText = `${percent}%`;
+                    percentEl.style.color = "#f44336"; // Red
+                } else {
+                    percentEl.innerText = "0.0%";
+                    percentEl.style.color = "#888";
+                }
+            }
+
             document.getElementById('pot-ui').innerText = "$" + room.pot.toLocaleString();
             document.getElementById('comm-ui').innerHTML = room.community.map(c => renderCard(c)).join('');
 

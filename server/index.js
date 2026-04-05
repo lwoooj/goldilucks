@@ -83,25 +83,29 @@ io.on('connection', (socket) => {
     }
 
     socket.on('start-game', async () => {
-        const room = rooms[socket.roomId];
-        if (!room || room.order.length < 2) return;
-        const ante = 100;
-        for (let id of room.order) {
-            room.players[id].chips -= ante;
-            room.pot += ante;
-            await User.findOneAndUpdate({ username: room.players[id].username }, { bankroll: room.players[id].chips });
-        }
-        room.status = "playing";
-        room.deck = createDeck();
-        room.highBet = 0; room.turn = 0; room.phase = 0; room.community = [];
-        room.order.forEach(id => {
-            const p = room.players[id];
-            p.cards = [room.deck.pop(), room.deck.pop()];
-            p.folded = false; p.acted = false; p.bet = 0;
-            io.to(id).emit('receive-cards', p.cards);
+            const room = rooms[socket.roomId];
+            if (!room || room.order.length < 2) return;
+            const ante = 100;
+            for (let id of room.order) {
+                const p = room.players[id];
+                // NEW: Record chips BEFORE the ante for the percentage calculation
+                p.startChips = p.chips; 
+                
+                p.chips -= ante;
+                room.pot += ante;
+                await User.findOneAndUpdate({ username: p.username }, { bankroll: p.chips });
+            }
+            room.status = "playing";
+            room.deck = createDeck();
+            room.highBet = 0; room.turn = 0; room.phase = 0; room.community = [];
+            room.order.forEach(id => {
+                const p = room.players[id];
+                p.cards = [room.deck.pop(), room.deck.pop()];
+                p.folded = false; p.acted = false; p.bet = 0;
+                io.to(id).emit('receive-cards', p.cards);
+            });
+            io.to(socket.roomId).emit('update', room);
         });
-        io.to(socket.roomId).emit('update', room);
-    });
 
     socket.on('action', (data) => {
         const room = rooms[socket.roomId];
