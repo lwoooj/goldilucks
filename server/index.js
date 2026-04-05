@@ -41,13 +41,60 @@ function createDeck() {
 }
 
 function getHandScore(hand, community) {
-    const fullHand = [...hand, ...community];
+    const fullHand = [...hand, ...community].sort((a, b) => b.value - a.value);
+    
+    // 1. Check for Flush Suit (Needed for Flush and Straight Flush)
+    const suitCounts = {};
+    fullHand.forEach(c => suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1);
+    const flushSuit = Object.keys(suitCounts).find(s => suitCounts[s] >= 5);
+    const flushCards = flushSuit ? fullHand.filter(c => c.suit === flushSuit) : [];
+
+    // 2. Check for Straight Flush
+    if (flushSuit) {
+        const sFlushVals = [...new Set(flushCards.map(c => c.value))];
+        for (let i = 0; i <= sFlushVals.length - 5; i++) {
+            if (sFlushVals[i] - sFlushVals[i + 4] === 4) return 800 + sFlushVals[i];
+        }
+        if ([14, 5, 4, 3, 2].every(v => sFlushVals.includes(v))) return 805;
+    }
+
+    // 3. Frequency Analysis (For Pairs, Trips, Quads, Full House)
     const vCounts = {};
-    fullHand.forEach(c => { vCounts[c.value] = (vCounts[c.value] || 0) + 1; });
-    const pairs = Object.entries(vCounts).filter(([v, c]) => c === 2).map(([v]) => Number(v)).sort((a,b)=>b-a);
-    if (pairs.length >= 2) return 200 + pairs[0];
-    if (pairs.length === 1) return 100 + pairs[0];
-    return Math.max(...fullHand.map(c => c.value));
+    fullHand.forEach(c => vCounts[c.value] = (vCounts[c.value] || 0) + 1);
+    const counts = Object.entries(vCounts).map(([val, count]) => ({ val: Number(val), count }));
+    counts.sort((a, b) => b.count - a.count || b.val - a.val);
+
+    // 4. Four of a Kind
+    if (counts[0].count === 4) return 700 + counts[0].val;
+
+    // 5. Full House (Three of a kind + a pair)
+    if (counts[0].count === 3 && counts[1] && counts[1].count >= 2) {
+        return 600 + counts[0].val;
+    }
+
+    // 6. Flush
+    if (flushSuit) return 500 + flushCards[0].value;
+
+    // 7. Straight
+    const uniqueVals = [...new Set(fullHand.map(c => c.value))];
+    for (let i = 0; i <= uniqueVals.length - 5; i++) {
+        if (uniqueVals[i] - uniqueVals[i + 4] === 4) return 400 + uniqueVals[i];
+    }
+    if ([14, 5, 4, 3, 2].every(v => uniqueVals.includes(v))) return 405;
+
+    // 8. Three of a Kind
+    if (counts[0].count === 3) return 300 + counts[0].val;
+
+    // 9. Two Pair
+    if (counts[0].count === 2 && counts[1] && counts[1].count === 2) {
+        return 200 + counts[0].val;
+    }
+
+    // 10. One Pair
+    if (counts[0].count === 2) return 100 + counts[0].val;
+
+    // 11. High Card
+    return fullHand[0].value;
 }
 
 io.on('connection', (socket) => {
