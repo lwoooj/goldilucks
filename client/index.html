@@ -140,24 +140,24 @@
 
             // 3. Percentage Logic (FIXED: Added safety checks to prevent crashing)
             const percentEl = document.getElementById('hud-percent');
+
             if (room.status === 'playing' && me.startChips && me.startChips > 0) {
-                // We treat (Starting Chips - Ante) as the baseline for the game
-                const baseline = me.startChips - 100; 
-                const diff = me.chips - baseline;
+                const diff = me.chips - me.startChips;
                 const percent = ((diff / me.startChips) * 100).toFixed(1);
                 
                 if (diff > 0) {
                     percentEl.innerText = `+${percent}%`;
                     percentEl.style.color = "#4caf50"; 
                 } else if (diff < 0) {
-                    // This will now show -1.0% correctly at the start
-                    percentEl.innerText = `${percent}%`;
-                    percentEl.style.color = "#f44336"; 
-                } else {
-                    // If they are exactly at (Start - 100), show 0.0% or the 1.0% loss
                     percentEl.innerText = `${percent}%`;
                     percentEl.style.color = "#f44336";
+                } else {
+                    percentEl.innerText = "0.0%";
+                    percentEl.style.color = "#888"
                 }
+            } else {
+                percentEl.innerText = "---";
+                percentEl.style.color = "#888";
             }
 
             // 4. Game State
