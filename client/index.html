@@ -33,17 +33,21 @@
             top: 0;
             left: 0;
             width: 100%;
-            background: rgba(0, 100, 164, 0.95);
-            -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
+            /* REDUCED HEALTH & TRANSPARENCY */
+            background: rgba(0, 100, 164, 0.88); /* UCI Blue */
+            -webkit-backdrop-filter: blur(8px); /* Slightly less blur */
+            backdrop-filter: blur(8px);
             z-index: 1000;
-            padding: 12px 25px;
+            
+            padding: 6px 20px; 
+            height: 40px;
+            
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 3px solid var(--uci-gold);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-        }
+            border-bottom: 2px solid var(--uci-gold);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
 
         #auth-container, #lobby {
             margin-top: 80px;
@@ -78,11 +82,11 @@
         .btn-gold { background: var(--uci-gold); color: #000; }
         .btn-blue { background: var(--uci-blue); color: white; width: 100%; }
 
-        #game { 
-            width: 100%; 
-            max-width: 1100px; 
-            padding: 20px; 
-            margin-top: 80px; 
+        #game {
+            width: 100%;
+            max-width: 1100px;
+            padding: 20px;
+            margin-top: 50px;
         }
         
         #table {
@@ -151,30 +155,15 @@
 <body>
 
     <div id="player-hud" class="hidden">
-        <div>
-            <span style="font-size: 0.7rem; color: var(--uci-gold); display: block;">PLAYER</span>
-            <span id="hud-username" style="font-weight: bold;">---</span>
+        <div style="font-size: 0.9rem; font-weight: 600;">
+            <span style="color: var(--uci-gold);">PLAYER:</span> 
+            <span id="hud-username" style="color: white; margin-left: 5px;">---</span>
         </div>
-        <div style="text-align: center;">
-            <span style="font-size: 0.7rem; color: var(--uci-gold); display: block;">YOUR STACK</span>
-            <span id="hud-balance" style="font-size: 1.6rem; font-weight: 900; color: #4caf50;">$0</span>
+        
+        <div style="font-size: 1.1rem; font-weight: 900;">
+            <span style="color: var(--uci-gold); font-size: 0.8rem; margin-right: 5px;">STACK:</span>
+            <span id="hud-balance" style="color: #4caf50;">$0</span>
         </div>
-        <div id="hud-cards" style="display: flex; transform: scale(0.65); origin: right;"></div>
-    </div>
-
-    <div id="auth-container">
-        <h1 style="color: var(--uci-gold);">UCI POKER</h1>
-        <input type="text" id="username-input" placeholder="UCInetID">
-        <button class="btn-gold" style="width: 100%" onclick="login()">Enter Arena</button>
-    </div>
-
-    <div id="lobby" class="hidden">
-        <h2 id="user-display"></h2>
-        <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 10px; margin-bottom: 20px;">
-            <div style="font-size: 1.8rem; color: #4caf50; font-weight: bold;">$<span id="lobby-bal">0</span></div>
-        </div>
-        <button class="btn-blue" onclick="socket.emit('create-room')">Create Table</button>
-        <div id="room-list" style="margin-top: 20px;"></div>
     </div>
 
     <div id="game" class="hidden">
@@ -288,7 +277,6 @@
         socket.on('receive-cards', (cards) => {
             const html = cards.map(c => renderCard(c)).join('');
             document.getElementById('my-hand').innerHTML = html;
-            document.getElementById('hud-cards').innerHTML = html;
         });
 
         socket.on('back-to-lobby', (data) => {
