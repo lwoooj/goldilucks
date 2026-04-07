@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UCI Poker League</title>
@@ -68,31 +69,41 @@
         <button class="btn-gold" style="width:100%" onclick="login()">ENTER ARENA</button>
     </div>
 
-    <div id="lobby" class="hidden">
-        <div style="margin-bottom: 30px;">
-            <h2 id="user-display" style="color: var(--uci-gold);"></h2>
-            <p style="color: #888; font-size: 0.8rem;">UNIVERSITY ACCOUNT OVERVIEW</p>
-        </div>
-
-        <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 15px; border: 1px solid #333; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <p style="color:#888; font-size:0.7rem; letter-spacing: 1px;">TOTAL BANKROLL</p>
-                <div style="font-size: 2.2rem; color: #4caf50; font-weight: 900;">$<span id="lobby-bal">0</span></div>
-            </div>
-            <div style="text-align: right;">
-                <p style="color:#888; font-size:0.7rem; letter-spacing: 1px;">TOTAL GROWTH</p>
-                <div id="lobby-percent" style="font-size: 1.8rem; font-weight: 900;">0.0%</div>
-            </div>
-        </div>
-
-        <button class="btn-blue" style="padding: 15px; font-size: 1.1rem;" onclick="showTableSelection()">JOIN COMPETITION</button>
+    <div id="lobby" class="hidden" style="width: 900px; margin-top: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: left;">
         
-        <div id="table-selection" class="hidden" style="margin-top: 30px; border-top: 1px solid #333; padding-top: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h4 style="color: var(--uci-gold);">ACTIVE TABLES</h4>
-                <button class="btn-gold" style="font-size: 0.7rem; padding: 5px 10px;" onclick="socket.emit('create-room')">+ CREATE NEW</button>
+        <div id="lobby-left-panel">
+            <div style="margin-bottom: 30px;">
+                <h2 id="user-display" style="color: var(--uci-gold);"></h2>
+                <p style="color: #888; font-size: 0.8rem;">UNIVERSITY ACCOUNT OVERVIEW</p>
             </div>
-            <div id="room-list"></div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; border: 1px solid #333; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <p style="color:#888; font-size:0.6rem; letter-spacing: 1px;">TOTAL BANKROLL</p>
+                    <div style="font-size: 1.8rem; color: #4caf50; font-weight: 900;">$<span id="lobby-bal">0</span></div>
+                </div>
+                <div style="text-align: right;">
+                    <p style="color:#888; font-size:0.6rem; letter-spacing: 1px;">TOTAL GROWTH</p>
+                    <div id="lobby-percent" style="font-size: 1.5rem; font-weight: 900;">0.0%</div>
+                </div>
+            </div>
+
+            <button class="btn-blue" style="padding: 15px; font-size: 1.1rem; width: 100%;" onclick="showTableSelection()">JOIN COMPETITION</button>
+            
+            <div id="table-selection" class="hidden" style="margin-top: 20px; border-top: 1px solid #333; padding-top: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h4 style="color: var(--uci-gold);">ACTIVE TABLES</h4>
+                    <button class="btn-gold" style="font-size: 0.7rem; padding: 5px 10px;" onclick="socket.emit('create-room')">+ CREATE</button>
+                </div>
+                <div id="room-list"></div>
+            </div>
+        </div>
+
+        <div id="lobby-right-panel" style="background: rgba(0,0,0,0.3); border-radius: 15px; padding: 20px; border: 1px solid #333;">
+            <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1px; margin-bottom: 15px;">PERFORMANCE INDEX (PER HAND)</p>
+            <div style="height: 250px; width: 100%;">
+                <canvas id="performanceChart"></canvas>
+            </div>
         </div>
     </div>
 
@@ -116,8 +127,38 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
+        let performanceChart;
+        let chipHistory = [10000]; // Starting baseline
         const socket = io(window.location.origin);
         let myUsername = "";
+
+        function initChart() {
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Start'],
+                    datasets: [{
+                        label: 'Bankroll',
+                        data: [10000],
+                        borderColor: '#ffd200', // UCI Gold
+                        backgroundColor: 'rgba(255, 210, 0, 0.1)',
+                        fill: true,
+                        tension: 0.4, // Smoothing
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { display: false },
+                        y: { grid: { color: '#222' }, ticks: { color: '#888', font: { size: 10 } } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
 
         function login() {
             const val = document.getElementById('username-input').value;
@@ -130,6 +171,9 @@
             document.getElementById('lobby').classList.remove('hidden');
             document.getElementById('player-hud').classList.remove('hidden'); // Show HUD now
             document.getElementById('user-display').innerText = "Welcome, " + val;
+            setTimeout(() => {
+                if (!performanceChart) initChart();
+            }, 100);
         }
 
         function showTableSelection() {
@@ -155,23 +199,68 @@
 
         // ONE CLEAN LOBBY LISTENER
         socket.on('lobby-list', (data) => {
-            // Update Lobby Stats
-            document.getElementById('lobby-bal').innerText = data.bankroll.toLocaleString();
+            // 1. Update Lobby Stats (Bankroll)
+            const lobbyBalEl = document.getElementById('lobby-bal');
+            if (lobbyBalEl) {
+                lobbyBalEl.innerText = data.bankroll.toLocaleString();
+            }
             
+            // 2. ROI Percentage Calculation
             const lobbyPercent = document.getElementById('lobby-percent');
-            const diff = data.bankroll - 10000;
-            const percent = ((diff / 10000) * 100).toFixed(1);
-            
-            lobbyPercent.innerText = (diff > 0 ? "+" : "") + percent + "%";
-            lobbyPercent.style.color = diff > 0 ? "#4caf50" : (diff < 0 ? "#f44336" : "#888");
+            if (lobbyPercent) {
+                const baseline = 10000;
+                const diff = data.bankroll - baseline;
+                const percent = ((diff / baseline) * 100).toFixed(1);
+                
+                // Set text and color based on performance
+                if (diff > 0) {
+                    lobbyPercent.innerText = `+${percent}%`;
+                    lobbyPercent.style.color = "#4caf50"; // Green
+                } else if (diff < 0) {
+                    lobbyPercent.innerText = `${percent}%`; // Shows the - sign automatically
+                    lobbyPercent.style.color = "#f44336"; // Red
+                } else {
+                    lobbyPercent.innerText = "0.0%";
+                    lobbyPercent.style.color = "#888"; // Gray
+                }
+            }
 
-            // Update Table List
+            // 3. Update Performance Graph (Chart.js)
+            if (performanceChart) {
+                // Only push to history if the value has changed since the last update
+                if (data.bankroll !== chipHistory[chipHistory.length - 1]) {
+                    chipHistory.push(data.bankroll);
+                    
+                    // Keep the graph clean by showing the last 20 hands/changes
+                    if (chipHistory.length > 20) chipHistory.shift(); 
+                    
+                    // Update Chart Data
+                    performanceChart.data.labels = chipHistory.map((_, i) => i === 0 ? "Start" : `H${i}`);
+                    performanceChart.data.datasets[0].data = chipHistory;
+                    
+                    // Dynamic Color: Green line if overall profit, Red if overall loss
+                    const lineColor = data.bankroll >= 10000 ? '#4caf50' : '#f44336';
+                    performanceChart.data.datasets[0].borderColor = lineColor;
+                    performanceChart.data.datasets[0].backgroundColor = data.bankroll >= 10000 
+                        ? 'rgba(76, 175, 80, 0.1)' 
+                        : 'rgba(244, 67, 54, 0.1)';
+                    
+                    performanceChart.update('none'); // 'none' prevents unwanted animation jitters
+                }
+            }
+
+            // 4. Render Active Tables List
             const container = document.getElementById('room-list');
-            container.innerHTML = data.list.map(r => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.03); margin-bottom:8px; border-radius:8px; border:1px solid #222;">
-                    <span><b>${r.id}</b> <small style="color:#888;">(${r.count}/6)</small></span>
-                    <button class="btn-gold" style="padding:5px 15px;" onclick="socket.emit('join-room', '${r.id}')">JOIN</button>
-                </div>`).join('') || "<p style='color:#555;'>No active tables. Create one to start.</p>";
+            if (container) {
+                container.innerHTML = data.list.map(r => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.03); margin-bottom:8px; border-radius:8px; border:1px solid #222;">
+                        <span>
+                            <b style="color:var(--uci-gold);">${r.id}</b> 
+                            <small style="color:#888; margin-left:10px;">(${r.count}/6 Players)</small>
+                        </span>
+                        <button class="btn-gold" style="padding:5px 15px; font-size:0.8rem;" onclick="socket.emit('join-room', '${r.id}')">JOIN TABLE</button>
+                    </div>`).join('') || "<p style='color:#555; text-align:center; padding:20px;'>No active tables. Create one to start the competition.</p>";
+            }
         });
 
         socket.on('update', (room) => {
