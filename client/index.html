@@ -4,7 +4,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker League</title>
+    <title>GOLDILUCKS</title>
     <style>
         :root { --uci-blue: #0064a4; --uci-gold: #ffd200; --dark-bg: #0f0f0f; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,6 +78,15 @@
         #controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; padding: 15px 0; display: flex; justify-content: center; align-items: center; gap: 12px; border-top: 1px solid #333; z-index: 900; }
         .raise-group { display: flex; align-items: center; background: #222; padding: 4px; border-radius: 8px; gap: 5px; }
         #raise-amt { width: 70px; border: none; padding: 8px; text-align: center; margin: 0; }
+
+        #login-logo {
+            width: 300px; 
+            height: auto;
+            margin-bottom: 20px;
+            display: block;      
+            margin-left: auto;
+            margin-right: auto;
+        }
     </style>
 </head>
 <body>
@@ -95,7 +104,8 @@
     </div>
 
     <div id="auth-container">
-        <h2 style="color: var(--uci-gold); margin-bottom: 20px;">GOLDILUCKS</h2>
+        <img src="logo.png" alt="Goldilucks Logo" id="login-logo">
+        <h2 style="color: var(--uci-gold); margin-bottom: 20px;"></h2>
         <input type="text" id="username-input" placeholder="Username">
         <button class="btn-gold" style="width:100%" onclick="login()">ENTER GAME</button>
     </div>
@@ -159,7 +169,17 @@
         </div>
 
         <div id="lobby-right-panel" style="background: rgba(0,0,0,0.3); border-radius: 15px; padding: 30px; border: 1px solid #333; display: flex; flex-direction: column;">
-            <p style="color: var(--uci-gold); font-size: 0.8rem; letter-spacing: 1.5px; margin-bottom: 20px;">PERFORMANCE INDEX</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <p style="color: var(--uci-gold); font-size: 0.8rem; letter-spacing: 1.5px; margin: 0;">PERFORMANCE INDEX</p>
+                
+                <button onclick="resetGraph()" 
+                        style="background: none; border: 1px solid #444; color: #666; font-size: 0.65rem; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" 
+                        onmouseover="this.style.borderColor='var(--uci-gold)'; this.style.color='var(--uci-gold)'" 
+                        onmouseout="this.style.borderColor='#444'; this.style.color='#666'">
+                    RESET DATA
+                </button>
+            </div>
+
             <div style="flex-grow: 1; min-height: 450px; width: 100%;">
                 <canvas id="performanceChart"></canvas>
             </div>
@@ -237,20 +257,37 @@
                         backgroundColor: 'transparent',
                         fill: false,
                         tension: 0,
-                        pointRadius: 3
+                        pointRadius: 4,
+                        pointHitRadius: 10,
+                        borderWidth: 2,  
+                        spanGaps: true
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: { left: 5, right: 5 }
+                    },
                     scales: {
-                        x: { display: false },
+                        x: { display: false,
+                            boundaryGap: true,
+                            grid: { offset: false }
+                        },
                         y: { 
                             grid: { color: '#222' }, 
-                            ticks: { color: '#888', font: { size: 10 } } 
+                            ticks: { color: '#888', font: { size: 10 } },
+                            beginAtZero: false
                         }
                     },
-                    plugins: { legend: { display: false } }
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            displayColors: false, 
+                            intersect: false,    
+                            mode: 'index'
+                        }
+                    }
                 }
             });
         }
@@ -290,6 +327,24 @@
                 document.getElementById('my-hand').innerHTML = '';
                 document.getElementById('comm-ui').innerHTML = '';
                 document.getElementById('pot-ui').innerText = '$0';
+            }
+        }
+
+        function resetGraph() {
+            if (confirm("Reset graph history? (Your current balance will remain the same)")) {
+                // Get the last known bankroll from the UI
+                const currentVal = parseInt(document.getElementById('lobby-bal').innerText.replace(/,/g, '')) || 10000;
+                
+                // Reset local variables and storage
+                chipHistory = [currentVal];
+                localStorage.setItem('poker_history', JSON.stringify(chipHistory));
+                
+                // Refresh the chart visually
+                if (performanceChart) {
+                    performanceChart.data.labels = ['Start'];
+                    performanceChart.data.datasets[0].data = chipHistory;
+                    performanceChart.update();
+                }
             }
         }
 
@@ -355,6 +410,20 @@
             }
 
             showScreen('lobby');
+        });
+
+        socket.on('lobby-list-update', (data) => {
+            const container = document.getElementById('room-list');
+            if (container) {
+                container.innerHTML = data.list.map(r => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.03); margin-bottom:8px; border-radius:8px; border:1px solid #222;">
+                        <span>
+                            <b style="color:var(--uci-gold);">${r.id}</b> 
+                            <small style="color:#888; margin-left:10px;">(${r.count}/6 Players)</small>
+                        </span>
+                        <button class="btn-gold" style="padding:5px 15px; font-size:0.8rem;" onclick="socket.emit('join-room', '${r.id}')">JOIN TABLE</button>
+                    </div>`).join('') || "<p style='color:#555; text-align:center; padding:20px;'>No active tables. Create one to start the competition.</p>";
+            }
         });
 
         socket.on('update', (room) => {

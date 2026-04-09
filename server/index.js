@@ -114,6 +114,15 @@ function getHandScore(hand, community) {
 }
 
 io.on('connection', (socket) => {
+    const broadcastLobbyList = () => {
+        const roomData = Object.keys(rooms).map(id => ({ 
+            id, 
+            count: rooms[id].order.length, 
+            status: rooms[id].status 
+        }));
+        io.emit('lobby-list-update', { list: roomData });
+    };
+
     socket.on('login', async (username) => {
         let user = await User.findOne({ username });
         if (!user) { user = new User({ username, bankroll: 10000 }); await user.save(); }
@@ -125,16 +134,27 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('create-room', () => {
+    socket.on('create-room', async () => {
         if (!socket.username) return;
-        const roomId = "TABLE_" + Math.random().toString(36).substring(7).toUpperCase();
-        rooms[roomId] = { players: {}, community: [], pot: 0, highBet: 0, order: [], turn: 0, phase: 0, status: "waiting", deck: [] };
-        joinRoom(socket, roomId);
+        const user = await User.findOne({ username: socket.username });
+        if (user) {
+            socket.bankroll = user.bankroll;
+            const roomId = "TABLE_" + Math.random().toString(36).substring(7).toUpperCase();
+            rooms[roomId] = { players: {}, community: [], pot: 0, highBet: 0, order: [], turn: 0, phase: 0, status: "waiting", deck: [] };
+            joinRoom(socket, roomId);
+        }
+        broadcastLobbyList();
     });
 
-    socket.on('join-room', (roomId) => {
+    socket.on('join-room', async (roomId) => {
         const room = rooms[roomId];
-        if (room && room.order.length < 6 && room.status === "waiting") joinRoom(socket, roomId);
+        if (room && room.order.length < 6 && room.status === "waiting") { 
+            const user = await User.findOne({ username: socket.username });
+            if (user) {
+                socket.bankroll = user.bankroll;
+                joinRoom(socket, roomId);
+            }
+        }
     });
 
     function joinRoom(socket, roomId) {
@@ -244,15 +264,12 @@ io.on('connection', (socket) => {
             const p = rooms[roomId].players[socket.id];
             
             if (p) {
-                // 1. Update the database with the current chip count
                 const updatedUser = await User.findOneAndUpdate(
                     { username: p.username }, 
                     { bankroll: p.chips },
-                    { new: true } // This returns the updated document
+                    { new: true } 
                 );
 
-                // 2. IMPORTANT: Send the new bankroll back to the user immediately
-                // This ensures the lobby reflects the win/loss without a refresh
                 socket.emit('lobby-list', {
                     bankroll: updatedUser.bankroll,
                     list: Object.values(rooms).map(r => ({
@@ -262,17 +279,15 @@ io.on('connection', (socket) => {
                 });
             }
 
-            // 3. Room cleanup logic
             rooms[roomId].order = rooms[roomId].order.filter(id => id !== socket.id);
             delete rooms[roomId].players[socket.id];
-            
+
             if (rooms[roomId].order.length === 0) {
                 delete rooms[roomId];
+                broadcastLobbyList();
             } else {
                 io.to(roomId).emit('update', rooms[roomId]);
             }
-            
-            // 4. Tell the client to switch screens
             socket.emit('back-to-lobby');
         }
     });
