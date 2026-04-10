@@ -22,13 +22,24 @@ mongoose.connect(MONGO_URI)
 
 const userSchema = new mongoose.Schema({
     username: { type: String, unique: true, required: true },
-    bankroll: { type: Number, default: 10000 }
+    bankroll: { type: Number, default: 10000 },
+    teamCode: { type: String, default: null }
 });
 const User = mongoose.model('User', userSchema);
 
 const suits = ['♠', '♥', '♦', '♣'];
 const values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 let rooms = {};
+
+const teamSchema = new mongoose.Schema({
+    name: { type: String, unique: true },
+    description: String,
+    code: { type: String, unique: true },
+    leader: String,
+    members: [String], 
+    vault: { type: Number, default: 0 }
+});
+const Team = mongoose.model('Team', teamSchema);
 
 function createDeck() {
     let deck = [];
@@ -135,9 +146,11 @@ io.on('connection', (socket) => {
         if (!user) { user = new User({ username, bankroll: 10000 }); await user.save(); }
         socket.username = username;
         socket.bankroll = user.bankroll;
+        socket.teamCode = user.teamCode;
         socket.emit('lobby-list', { 
             list: Object.keys(rooms).map(id => ({ id, count: rooms[id].order.length, status: rooms[id].status })), 
-            bankroll: socket.bankroll 
+            bankroll: socket.bankroll,
+            teamCode: socket.teamCode
         });
     });
 
@@ -162,6 +175,108 @@ io.on('connection', (socket) => {
                 joinRoom(socket, roomId);
             }
         }
+    });
+
+    socket.on('request-create-team', async (data) => {
+        const cost = 10000;
+        const user = await User.findOne({ username: socket.username });
+
+        if (!user || user.bankroll < cost) {
+            return socket.emit('error-msg', "Insufficient funds. You need $10,000 to start a team.");
+        }
+
+        // Generate unique 6-character code
+        const teamCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        try {
+            const newTeam = new Team({
+                name: data.name,
+                description: data.desc,
+                code: teamCode,
+                leader: socket.username,
+                members: [socket.username]
+            });
+
+            await newTeam.save();
+
+            // Deduct the money
+            user.bankroll -= cost;
+            user.teamCode = teamCode;
+            await user.save();
+            socket.teamCode = teamCode;
+            socket.bankroll = user.bankroll;
+
+            socket.emit('team-created', { name: data.name, code: teamCode });
+            
+            // Update their lobby stats immediately
+            socket.emit('lobby-list', { 
+                bankroll: socket.bankroll,
+                teamCode: socket.teamCode,
+                list: Object.keys(rooms).map(id => ({ id, count: rooms[id].order.length }))
+            });
+
+        } catch (err) {
+            socket.emit('error-msg', "Team name already exists!");
+        }
+    });
+
+    socket.on('request-team-details', async (code) => {
+        const team = await Team.findOne({ code });
+        if (!team) return;
+
+        // Fetch all members to calculate total bankroll
+        const members = await User.find({ username: { $in: team.members } });
+        const totalBankroll = members.reduce((sum, m) => sum + m.bankroll, 0);
+        const growth = (((totalBankroll / (team.members.length * 10000)) - 1) * 100).toFixed(1);
+
+        socket.emit('team-details-response', {
+            name: team.name,
+            code: team.code,
+            members: team.members,
+            totalBankroll,
+            growth
+        });
+    });
+
+    // 1. Fetch all teams for the Join list
+    socket.on('request-all-teams', async () => {
+        const teams = await Team.find({});
+        const formattedTeams = teams.map(t => ({
+            name: t.name,
+            code: t.code,
+            memberCount: t.members.length
+        }));
+        socket.emit('all-teams-list', formattedTeams);
+    });
+
+    // 2. Process a Join Request
+    socket.on('request-join-team', async (code) => {
+        const team = await Team.findOne({ code: code.toUpperCase() });
+        const user = await User.findOne({ username: socket.username });
+
+        if (!team) return socket.emit('error-msg', "Invalid Team Code.");
+        if (user.teamCode) return socket.emit('error-msg', "You are already in a team.");
+        if (team.members.length >= 10) return socket.emit('error-msg', "Team is full (Max 10).");
+
+        // Update Team Database
+        team.members.push(socket.username);
+        await team.save();
+
+        // Update User Database
+        user.teamCode = team.code;
+        await user.save();
+        
+        // Update current session
+        socket.teamCode = team.code;
+
+        socket.emit('team-joined', { name: team.name, code: team.code });
+        
+        // Refresh their lobby data
+        socket.emit('lobby-list', { 
+            bankroll: user.bankroll,
+            teamCode: user.teamCode,
+            list: Object.keys(rooms).map(id => ({ id, count: rooms[id].order.length }))
+        });
     });
 
     function joinRoom(socket, roomId) {

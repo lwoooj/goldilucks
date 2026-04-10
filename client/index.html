@@ -111,6 +111,35 @@
         <button class="btn-gold" style="width:100%" onclick="login()">ENTER GAME</button>
     </div>
 
+    <div id="team-menu" class="hidden" style="margin-top: 80px; width: 95%; max-width: 1000px; display: flex; flex-direction: column; align-items: center;">
+        
+        <div id="team-guest-view" class="hidden" style="background: rgba(255,255,255,0.05); padding: 40px; border-radius: 20px; width: 400px; text-align: center; border: 1px solid #333;">
+            <h2 style="color: var(--uci-gold); margin-bottom: 30px;">TEAM OPERATIONS</h2>
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <button class="btn-gold" onclick="toggleJoinModal(true)" style="padding: 20px;">JOIN A TEAM</button>
+                <button class="btn-blue" onclick="toggleCreateModal(true)" style="padding: 20px;">CREATE NEW TEAM</button>
+            </div>
+        </div>
+
+        <div id="team-member-view" class="hidden" style="width: 100%; display: grid; grid-template-columns: 1fr 2fr; gap: 30px;">
+            
+            <div style="background: rgba(0,0,0,0.3); padding: 25px; border-radius: 15px; border: 1px solid #333;">
+                <h3 id="team-title-ui" style="color: var(--uci-gold); margin-bottom: 15px;">---</h3>
+                <p id="team-code-ui" style="font-size: 0.7rem; color: #888; margin-bottom: 20px;">CODE: ---</p>
+                <div id="member-list-ui" style="display: flex; flex-direction: column; gap: 10px;">
+                    </div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.3); padding: 25px; border-radius: 15px; border: 1px solid #333;">
+                <p style="color: #888; font-size: 0.7rem; letter-spacing: 1px;">CLUB BANKROLL</p>
+                <div id="team-vault-ui" style="font-size: 3rem; color: #4caf50; font-weight: 900;">$0</div>
+                <div id="team-growth-ui" style="font-size: 1.2rem; margin-top: 10px;">0% Growth</div>
+            </div>
+        </div>
+
+        <button onclick="showScreen('lobby')" style="margin-top: 30px; background: none; border: none; color: #666; cursor: pointer; text-decoration: underline;">Back to Lobby</button>
+    </div>
+
     <div id="lobby" class="hidden">
 
         <div id="lobby-left-panel" style="display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
@@ -144,10 +173,9 @@
 
                 <div style="display: flex; gap: 15px; width: 100%;">
                     <button style="flex: 1; padding: 25px; background: rgba(0,0,0,0.3); color: #888; border-radius: 8px; font-weight: bold; font-size: 1.3rem; border: 1px solid #444; cursor: pointer; transition: all 0.3s ease;" 
-                            onmouseover="this.style.color='var(--uci-gold)'; this.style.borderColor='var(--uci-gold)'; this.style.background='rgba(255,210,0,0.05)'" 
-                            onmouseout="this.style.color='#888'; this.style.borderColor='#444'; this.style.background='rgba(0,0,0,0.3)'"
-                            onclick="alert('Coming Soon!')">
-                        TEAM
+                        onmouseover="this.style.color='var(--uci-gold)'; this.style.borderColor='var(--uci-gold)'; this.style.background='rgba(255,210,0,0.05)'" 
+                        onmouseout="this.style.color='#888'; this.style.borderColor='#444'; this.style.background='rgba(0,0,0,0.3)'"
+                        onclick="showScreen('team-menu')"> TEAM
                     </button>
                     <button style="flex: 1; padding: 25px; background: rgba(0,0,0,0.3); color: #888; border-radius: 8px; font-weight: bold; font-size: 1.3rem; border: 1px solid #444; cursor: pointer; transition: all 0.3s ease;" 
                             onmouseover="this.style.color='var(--uci-gold)'; this.style.borderColor='var(--uci-gold)'; this.style.background='rgba(255,210,0,0.05)'" 
@@ -214,25 +242,83 @@
         </div>
     </div>
 
+    <div id="create-team-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; display:flex; align-items:center; justify-content:center;">
+        <div style="background:#1a1a1a; padding:30px; border-radius:15px; border:2px solid var(--uci-gold); width:350px;">
+            <h3 style="color:var(--uci-gold); margin-bottom:20px; text-align:center;">CREATE TEAM</h3>
+            <p style="font-size:0.7rem; color:#888; margin-bottom:15px; text-align:center;">Registration Fee: <span style="color:#4caf50;">$10,000</span></p>
+            
+            <input type="text" id="team-name-input" placeholder="Team Name">
+            <textarea id="team-desc-input" placeholder="Short Description..." style="width:100%; background:#111; color:white; border:1px solid #444; padding:10px; border-radius:5px; height:80px; margin-bottom:20px; font-family:inherit;"></textarea>
+            
+            <div style="display:flex; gap:10px;">
+                <button class="btn-gold" style="flex:1;" onclick="submitCreateTeam()">CREATE</button>
+                <button style="flex:1; background:#444; color:white;" onclick="toggleCreateModal(false)">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="join-team-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; display:flex; align-items:center; justify-content:center;">
+        <div style="background:#1a1a1a; padding:30px; border-radius:15px; border:2px solid var(--uci-blue); width:450px; max-height: 80vh; display:flex; flex-direction:column;">
+            <h3 style="color:var(--uci-blue); margin-bottom:20px; text-align:center;">FIND A TEAM</h3>
+            
+            <input type="text" id="team-search-input" placeholder="Search by name or code..." oninput="filterTeams(this.value)" style="margin-bottom:15px;">
+            
+            <div id="available-teams-list" style="overflow-y:auto; flex-grow:1; display:flex; flex-direction:column; gap:10px; margin-bottom:20px; padding-right:5px;">
+                </div>
+            
+            <button style="width:100%; background:#444; color:white;" onclick="toggleJoinModal(false)">CANCEL</button>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Helper to switch between different main views
+        let myTeamCode = null;
         function showScreen(screenId) {
-            // List of all main container IDs
-            const screens = ['auth-container', 'lobby', 'table-browser', 'game'];
+            const screens = ['auth-container', 'lobby', 'table-browser', 'game', 'team-menu'];
+            
             screens.forEach(id => {
                 const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
+                if (el) {
+                    el.classList.add('hidden');
+                    el.style.display = 'none'; 
+                }
             });
             
-            document.getElementById(screenId).classList.remove('hidden');
+            const target = document.getElementById(screenId);
+            if (target) {
+                target.classList.remove('hidden');
 
-            // Logic: Only show HUD during the game
+                if (screenId === 'lobby') {
+                    target.style.display = 'grid';
+                } else if (screenId === 'team-menu' || screenId === 'auth-container') {
+                    target.style.display = 'flex';
+                    
+                    // --- NEW LOGIC FOR TEAM VIEW ---
+                    if (screenId === 'team-menu') {
+                        const guestView = document.getElementById('team-guest-view');
+                        const memberView = document.getElementById('team-member-view');
+                        
+                        if (myTeamCode) {
+                            // User is in a team: Show Dashboard
+                            guestView.classList.add('hidden');
+                            memberView.classList.remove('hidden');
+                            // Fetch the latest stats from the server
+                            socket.emit('request-team-details', myTeamCode);
+                        } else {
+                            // User is a Free Agent: Show Join/Create
+                            guestView.classList.remove('hidden');
+                            memberView.classList.add('hidden');
+                        }
+                    }
+                } else {
+                    target.style.display = 'block';
+                }
+            }
+
             const hud = document.getElementById('player-hud');
-            if (screenId === 'game') {
-                hud.classList.remove('hidden');
-            } else {
-                hud.classList.add('hidden');
+            if (hud) {
+                if (screenId === 'game') hud.classList.remove('hidden');
+                else hud.classList.add('hidden');
             }
         }
         
@@ -349,9 +435,82 @@
             }
         }
 
+        function toggleCreateModal(show) {
+            const modal = document.getElementById('create-team-modal');
+            modal.style.display = show ? 'flex' : 'none';
+            if (show) modal.classList.remove('hidden');
+        }
+
+        let allTeams = [];
+
+        function toggleJoinModal(show) {
+            const modal = document.getElementById('join-team-modal');
+            modal.style.display = show ? 'flex' : 'none';
+            if (show) {
+                modal.classList.remove('hidden');
+                socket.emit('request-all-teams'); 
+            }
+        }
+
+        socket.on('all-teams-list', (teams) => {
+            allTeams = teams;
+            renderTeamList(teams);
+        });
+
+        function renderTeamList(teams) {
+            const list = document.getElementById('available-teams-list');
+            if (teams.length === 0) {
+                list.innerHTML = `<p style="color:#666; text-align:center;">No teams found.</p>`;
+                return;
+            }
+
+            list.innerHTML = teams.map(t => `
+                <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px; border:1px solid #333; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="color:var(--uci-gold); font-weight:bold;">${t.name}</div>
+                        <div style="font-size:0.7rem; color:#888;">${t.memberCount}/10 Members</div>
+                    </div>
+                    <button class="btn-gold" style="padding:5px 15px; font-size:0.8rem;" onclick="socket.emit('request-join-team', '${t.code}')">JOIN</button>
+                </div>
+            `).join('');
+        }
+
+        function filterTeams(query) {
+            const filtered = allTeams.filter(t => 
+                t.name.toLowerCase().includes(query.toLowerCase()) || 
+                t.code.toLowerCase().includes(query.toLowerCase())
+            );
+            renderTeamList(filtered);
+        }
+
+        socket.on('team-joined', (data) => {
+            alert(`Welcome to ${data.name}!`);
+            toggleJoinModal(false);
+            myTeamCode = data.code;
+            showScreen('team-menu');
+        });
+
+        function submitCreateTeam() {
+            const name = document.getElementById('team-name-input').value;
+            const desc = document.getElementById('team-desc-input').value;
+
+            if (!name || !desc) return alert("Please fill in all fields.");
+
+            socket.emit('request-create-team', { name, desc });
+        }
+
+        // Listen for success/failure from server
+        socket.on('team-created', (data) => {
+            alert(`Success! Team ${data.name} created. Code: ${data.code}`);
+            toggleCreateModal(false);
+            showScreen('lobby');
+        });
+
+        socket.on('error-msg', (msg) => alert(msg));
+
         // ONE CLEAN LOBBY LISTENER
         socket.on('lobby-list', (data) => {
-            // 1. Update Lobby Stats (Bankroll)
+            myTeamCode = data.teamCode;
             const lobbyBalEl = document.getElementById('lobby-bal');
             if (lobbyBalEl) {
                 lobbyBalEl.innerText = data.bankroll.toLocaleString();
@@ -364,7 +523,6 @@
                 const diff = data.bankroll - baseline;
                 const percent = ((diff / baseline) * 100).toFixed(1);
                 
-                // Set text and color based on performance
                 if (diff > 0) {
                     lobbyPercent.innerText = `+${percent}%`;
                     lobbyPercent.style.color = "#4caf50"; // Green
@@ -411,6 +569,18 @@
             }
 
             showScreen('lobby');
+        });
+
+        socket.on('team-details-response', (data) => {
+            document.getElementById('team-title-ui').innerText = data.name;
+            document.getElementById('team-code-ui').innerText = `CODE: ${data.code}`;
+            document.getElementById('team-vault-ui').innerText = `$${data.totalBankroll.toLocaleString()}`;
+            document.getElementById('team-growth-ui').innerText = `${data.growth}% Growth`;
+
+            const list = document.getElementById('member-list-ui');
+            list.innerHTML = data.members.map(m => 
+                `<div style="padding:10px; background:rgba(255,255,255,0.05); border-radius:5px; font-size:0.9rem; border:1px solid #333;">${m}</div>`
+            ).join('');
         });
 
         socket.on('lobby-list-update', (data) => {
