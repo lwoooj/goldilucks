@@ -320,23 +320,23 @@
     </div>
 
     <div id="create-team-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; display:flex; align-items:center; justify-content:center;">
-        <div style="background:#1a1a1a; padding:30px; border-radius:15px; border:2px solid var(--uci-gold); width:350px;">
-            <h3 style="color:var(--uci-gold); margin-bottom:20px; text-align:center;">CREATE TEAM</h3>
+        <div style="background:#1a1a1a; padding:30px; border-radius:15px; border:2px solid var(--uci-blue); width:350px;">
+            <h3 style="color:var(--uci-blue); margin-bottom:20px; text-align:center;">CREATE TEAM</h3>
             
             <input type="text" id="team-name-input" placeholder="Team Name">
             <textarea id="team-desc-input" placeholder="Short Description..." style="width:100%; background:#111; color:white; border:1px solid #444; padding:10px; border-radius:5px; height:80px; margin-bottom:20px; font-family:inherit;"></textarea>
             
             <div style="display:flex; gap:10px;">
-                <button class="btn-gold" style="flex:1;" onclick="submitCreateTeam()">CREATE</button>
+                <button class="btn-blue" style="flex:1;" onclick="submitCreateTeam()">CREATE</button>
                 <button style="flex:1; background:#444; color:white;" onclick="toggleCreateModal(false)">CANCEL</button>
             </div>
         </div>
     </div>
 
     <div id="join-team-modal" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; display:flex; align-items:center; justify-content:center;">
-        <div style="background:#1a1a1a; padding:30px; border-radius:15px; border:2px solid var(--uci-blue); width:450px; max-height: 80vh; display:flex; flex-direction:column;">
-            <h3 style="color:var(--uci-blue); margin-bottom:20px; text-align:center;">FIND A TEAM</h3>
-            
+        <div style="background:#1a1a1a; padding:30px; border-radius:15px; border:2px solid var(--uci-gold); width:450px; max-height: 80vh; display:flex; flex-direction:column;">
+            <h3 style="color: var(--uci-gold); margin-bottom:20px; text-align:center;">FIND A TEAM</h3>
+        
             <input type="text" id="team-search-input" placeholder="Search by name or code..." oninput="filterTeams(this.value)" style="margin-bottom:15px;">
             
             <div id="available-teams-list" style="overflow-y:auto; flex-grow:1; display:flex; flex-direction:column; gap:10px; margin-bottom:20px; padding-right:5px;">
