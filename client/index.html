@@ -14,6 +14,14 @@
         body { background: var(--dark-bg); color: white; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         .hidden { display: none !important; }
 
+        #auth-container, #lobby, #table-browser, #team-menu, #ranking-menu {
+            transition: opacity 240ms ease, transform 240ms ease;
+        }
+
+        #game {
+            transition: opacity 240ms ease;
+        }
+
         #player-hud {
             position: fixed; top: 0; left: 0; width: 100%; height: 45px;
             background: rgba(0, 100, 164, 0.9); backdrop-filter: blur(10px);
@@ -787,6 +795,12 @@
             if (!target) return;
 
             target.classList.remove('hidden');
+            target.style.opacity = '0';
+            if (screenId !== 'game') {
+                target.style.transform = 'translateY(12px)';
+            } else {
+                target.style.transform = 'none';
+            }
 
             if (screenId === 'team-menu') {
                     target.style.display = 'flex';
@@ -805,6 +819,13 @@
                 } else {
                     target.style.display = 'block';
                 }
+
+            requestAnimationFrame(() => {
+                target.style.opacity = '1';
+                if (screenId !== 'game') {
+                    target.style.transform = 'translateY(0)';
+                }
+            });
 
                 const hud = document.getElementById('player-hud');
                 if (hud) {
@@ -1085,6 +1106,27 @@
             });
         }
 
+        function animateValue(el, from, to, formatter, duration = 1200) {
+            if (!el) return;
+            const start = performance.now();
+            const delta = to - from;
+            if (delta === 0) {
+                el.innerText = formatter(to);
+                return;
+            }
+            const tick = (now) => {
+                const progress = Math.min((now - start) / duration, 1);
+                const current = from + delta * progress;
+                el.innerText = formatter(current);
+                if (progress < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        }
+
+        function parseNumberText(text) {
+            return Number(String(text).replace(/[^0-9.-]/g, '')) || 0;
+        }
+
         function sendTeamMsg() {
             const input = document.getElementById('team-chat-input');
             const msg = input.value.trim();
@@ -1244,7 +1286,8 @@
             myTeamCode = data.teamCode;
             const lobbyBalEl = document.getElementById('lobby-bal');
             if (lobbyBalEl) {
-                lobbyBalEl.innerText = data.bankroll.toLocaleString();
+                const current = parseNumberText(lobbyBalEl.innerText);
+                animateValue(lobbyBalEl, current, data.bankroll, (value) => Math.round(value).toLocaleString());
             }
             
             // 2. ROI Percentage Calculation
@@ -1252,18 +1295,20 @@
             if (lobbyPercent) {
                 const baseline = 10000;
                 const diff = data.bankroll - baseline;
-                const percent = ((diff / baseline) * 100).toFixed(1);
+                const percentValue = (diff / baseline) * 100;
                 
-                if (diff > 0) {
-                    lobbyPercent.innerText = `+${percent}%`;
-                    lobbyPercent.style.color = "#4caf50";
-                } else if (diff < 0) {
-                    lobbyPercent.innerText = `${percent}%`;
-                    lobbyPercent.style.color = "#f44336";
-                } else {
-                    lobbyPercent.innerText = "0.0%";
+                animateValue(lobbyPercent, parseNumberText(lobbyPercent.innerText), percentValue, (value) => {
+                    const fixed = value.toFixed(1);
+                    if (value > 0) {
+                        lobbyPercent.style.color = "#4caf50";
+                        return `+${fixed}%`;
+                    } else if (value < 0) {
+                        lobbyPercent.style.color = "#f44336";
+                        return `${fixed}%`;
+                    }
                     lobbyPercent.style.color = "#888";
-                }
+                    return `0.0%`;
+                });
             }
 
             // 3. Update Performance Graph (Chart.js)
@@ -1309,9 +1354,19 @@
             const growthEl = document.getElementById('team-growth-ui');
             
             vaultEl.innerText = `$${data.totalBankroll.toLocaleString()}`;
-                growthEl.innerText = `${data.growth > 0 ? '+' : ''}${data.growth}%`;
-
-                growthEl.style.color = data.growth >= 0 ? "#4caf50" : "#f44336";
+            const currentGrowth = parseNumberText(growthEl.innerText);
+            animateValue(growthEl, currentGrowth, data.growth, (value) => {
+                const fixed = value.toFixed(1);
+                if (value > 0) {
+                    growthEl.style.color = "#4caf50";
+                    return `+${fixed}%`;
+                } else if (value < 0) {
+                    growthEl.style.color = "#f44336";
+                    return `${fixed}%`;
+                }
+                growthEl.style.color = "#888";
+                return `0.0%`;
+            });
 
                 initTeamChart(data.history || [0]);
 
