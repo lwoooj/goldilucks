@@ -472,6 +472,28 @@ io.on('connection', (socket) => {
             room.highBet = amt; p.last = `RAISE $${amt}`;
             room.order.forEach(pid => { if (pid !== socket.id) room.players[pid].acted = false; });
         }
+        else if (data.type === 'all-in') {
+            if (room.highBet > p.bet) {
+                return socket.emit('error-msg', "All in unavailable: respond with call or fold.");
+            }
+            const activePlayers = room.order
+                .filter(id => !room.players[id].folded)
+                .map(id => room.players[id]);
+            const minStack = activePlayers.length
+                ? Math.min(...activePlayers.map(player => player.chips + player.bet))
+                : 0;
+            const targetBet = Math.max(room.highBet, minStack);
+            const added = targetBet - p.bet;
+            if (added <= 0 || added > p.chips) {
+                return socket.emit('error-msg', "All in amount is invalid.");
+            }
+            p.chips -= added;
+            p.bet = targetBet;
+            room.pot += added;
+            room.highBet = targetBet;
+            p.last = `ALL IN $${targetBet}`;
+            room.order.forEach(pid => { if (pid !== socket.id) room.players[pid].acted = false; });
+        }
         processNext(room);
     });
 

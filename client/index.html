@@ -713,6 +713,10 @@
             <button id="check-btn" onclick="act('check')" style="background: #1565c0; color: white;">CHECK</button>
             <button id="call-btn" onclick="act('call')" style="background: #1565c0; color: white;">CALL</button>
             <div class="raise-group"><input type="number" id="raise-amt" placeholder="Amt"><button id="raise-btn" class="btn-gold" onclick="raise()">RAISE</button></div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <button id="all-in-btn" onclick="allIn()" style="background: #6a1b9a; color: white;">ALL IN</button>
+                <span id="all-in-amt" style="font-size:0.8rem; color:#c084fc; min-width:60px;">$0</span>
+            </div>
             <button onclick="leaveGame()" style="background: #444; color: white;">QUIT</button>
         </div>
     </div>
@@ -1266,6 +1270,10 @@
 
         function act(type) { socket.emit('action', { type }); }
         
+        function allIn() {
+            socket.emit('action', { type: 'all-in' });
+        }
+        
         function raise() { 
             const amt = document.getElementById('raise-amt').value; 
             if(amt) { 
@@ -1538,6 +1546,13 @@
             // Action Buttons
             const callAmount = room.highBet - me.bet;
             document.getElementById('call-btn').innerText = callAmount > 0 ? `CALL $${callAmount}` : `CALL`;
+            const activePlayers = room.order
+                .map(id => room.players[id])
+                .filter(player => player && !player.folded);
+            const minStack = activePlayers.length
+                ? Math.min(...activePlayers.map(player => player.chips + player.bet))
+                : 0;
+            document.getElementById('all-in-amt').innerText = `$${Math.max(0, minStack).toLocaleString()}`;
 
             // Opponent Rendering
             const opps = document.getElementById('opponents');
@@ -1564,6 +1579,8 @@
                 if(id === 'check-btn') el.disabled = !isMyTurn || callAmount > 0;
                 else el.disabled = !isMyTurn;
             });
+            const allInBtn = document.getElementById('all-in-btn');
+            allInBtn.disabled = !isMyTurn || callAmount > 0 || room.highBet > 0 || minStack <= 0;
             
             // Update YOUR TURN indicator
             const gameEl = document.getElementById('game');
