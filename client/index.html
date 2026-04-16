@@ -571,14 +571,10 @@
                     </button>
                 </div>
 
-                <div style="background: linear-gradient(168deg, rgba(38, 40, 48, 0.94) 0%, rgba(14, 15, 20, 0.98) 48%, rgba(10, 11, 14, 0.99) 100%); border-radius: 15px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset, 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 32px 80px rgba(0, 0, 0, 0.75), 0 12px 40px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; flex-grow: 1; min-height: 0; overflow: hidden; position: relative;">
-                    <div class="app-modal-glow"></div>
-                    <div style="position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, transparent 42%, transparent 58%, rgba(255, 255, 255, 0.02) 100%); pointer-events: none; z-index: 1; opacity: 0.85;"></div>
-                    <div style="position: absolute; top: 0; left: 12%; right: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent); z-index: 5; pointer-events: none;"></div>
-                    <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; margin-bottom: 15px; opacity: 0.7; flex-shrink: 0; position: relative; z-index: 10;">TEAM RADIOGRAM</p>
-                    <div id="team-chat-display" style="flex-grow: 1; overflow-y: auto; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 0; position: relative; z-index: 10;"></div>
-                    
-                    <div style="display: flex; gap: 0; background: #000; border: 1px solid #333; padding: 5px; flex-shrink: 0; position: relative; z-index: 10;">
+                <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 20px; border: 1px solid #333; display: flex; flex-direction: column; flex-grow: 1; min-height: 0; overflow: hidden;">
+                    <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; margin-bottom: 15px; opacity: 0.7; flex-shrink: 0;">TEAM RADIOGRAM</p>
+                    <div id="team-chat-display" style="flex-grow: 1; overflow-y: auto; margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 0;"></div>
+                    <div style="display: flex; gap: 0; background: #000; border: 1px solid #333; padding: 5px; flex-shrink: 0;">
                         <span style="color: #00ff41; padding: 8px 0 8px 10px; font-family: monospace;"></span>
                         <input type="text" id="team-chat-input" placeholder="Message..." 
                             style="margin-bottom: 0; padding: 8px; background: transparent; border: none; font-family: monospace; color: #00ff41; outline: none; width: 100%;"
@@ -588,20 +584,14 @@
                 </div>
             </div>
 
-            <div style="background: linear-gradient(168deg, rgba(38, 40, 48, 0.94) 0%, rgba(14, 15, 20, 0.98) 48%, rgba(10, 11, 14, 0.99) 100%); border-radius: 15px; padding: 25px; border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset, 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 32px 80px rgba(0, 0, 0, 0.75), 0 12px 40px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; position: relative;">
-                <div class="app-modal-glow"></div>
-                <div style="position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, transparent 42%, transparent 58%, rgba(255, 255, 255, 0.02) 100%); pointer-events: none; z-index: 1; opacity: 0.85;"></div>
-                <div style="position: absolute; top: 0; left: 12%; right: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent); z-index: 5; pointer-events: none;"></div>
-                <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; margin-bottom: 20px; opacity: 0.7; flex-shrink: 0; position: relative; z-index: 10;">ACTIVE ROSTER</p>
-                <div id="member-list-ui" style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex-grow: 1; min-height: 0; position: relative; z-index: 10;"></div>
-                <button onclick="showScreen('lobby')" style="margin-top: 20px; background: none; border: none; color: #666; cursor: pointer; text-decoration: underline; font-size: 0.8rem; flex-shrink: 0; position: relative; z-index: 10;">back to dashboard</button>
+            <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 25px; border: 1px solid #333; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden;">
+                <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; margin-bottom: 20px; opacity: 0.7; flex-shrink: 0;">ACTIVE ROSTER</p>
+                <div id="member-list-ui" style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex-grow: 1; min-height: 0;"></div>
+                <button onclick="showScreen('lobby')" style="margin-top: 20px; background: none; border: none; color: #666; cursor: pointer; text-decoration: underline; font-size: 0.8rem; flex-shrink: 0;">back to dashboard</button>
             </div>
 
-            <div style="background: linear-gradient(168deg, rgba(38, 40, 48, 0.94) 0%, rgba(14, 15, 20, 0.98) 48%, rgba(10, 11, 14, 0.99) 100%); border-radius: 15px; padding: 30px; border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset, 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 32px 80px rgba(0, 0, 0, 0.75), 0 12px 40px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative;">
-                <div class="app-modal-glow"></div>
-                <div style="position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, transparent 42%, transparent 58%, rgba(255, 255, 255, 0.02) 100%); pointer-events: none; z-index: 1; opacity: 0.85;"></div>
-                <div style="position: absolute; top: 0; left: 12%; right: 12%; height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent); z-index: 5; pointer-events: none;"></div>
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-shrink: 0; position: relative; z-index: 10;">
+            <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 30px; border: 1px solid #333; display: flex; flex-direction: column; height: 100%; min-height: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-shrink: 0;">
                     <div>
                         <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; opacity: 0.7;">PERFORMANCE INDEX</p>
                         <div id="team-growth-ui" style="font-size: 2.2rem; color: #4caf50; font-weight: 900; margin-top: 5px;">0.0%</div>
@@ -611,7 +601,7 @@
                         <div id="team-vault-ui" style="font-size: 1.1rem; font-weight: 900; padding-top: 5px; color: #888;">$0</div>
                     </div>
                 </div>
-                <div style="flex-grow: 1; width: 100%; min-height: 0; position: relative; z-index: 10;">
+                <div style="flex-grow: 1; width: 100%; min-height: 0;">
                     <canvas id="teamPerformanceChart" style="width: 100%; height: 100%; display: block;"></canvas>
                 </div>
             </div>
