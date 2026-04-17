@@ -815,6 +815,51 @@
             return GRAPH_INTERVALS[activeGraphIntervalIndex];
         }
 
+        function graphSocketPayload() {
+            return { intervalMs: getActiveGraphInterval().ms };
+        }
+
+        function normalizeTeamHistoryForChart(raw) {
+            if (!Array.isArray(raw) || raw.length === 0) return [];
+            if (typeof raw[0] === 'number') {
+                const now = Date.now();
+                const step = 5 * 60 * 1000;
+                return raw.map((v, i) => ({
+                    x: now - (raw.length - 1 - i) * step,
+                    y: v
+                }));
+            }
+            return raw
+                .map((p) => {
+                    if (!p || typeof p !== 'object' || p.t == null || p.v == null) return null;
+                    return { x: Number(p.t), y: Number(p.v) };
+                })
+                .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+                .sort((a, b) => a.x - b.x);
+        }
+
+        function formatGraphTooltipTime(ms) {
+            return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        }
+
+        function formatGraphTooltipPercent(y) {
+            if (!Number.isFinite(y)) return '';
+            const fixed = y.toFixed(1);
+            if (y > 0) return `+${fixed}%`;
+            if (y < 0) return `${fixed}%`;
+            return '0.0%';
+        }
+
+        function graphLineTooltipOptions() {
+            return {
+                displayColors: false,
+                callbacks: {
+                    title: (items) => (items.length ? formatGraphTooltipTime(items[0].parsed.x) : ''),
+                    label: (item) => formatGraphTooltipPercent(item.parsed.y)
+                }
+            };
+        }
+
         function updateGraphIntervalUI() {
             const { label } = getActiveGraphInterval();
             document.querySelectorAll('.graph-interval-btn').forEach((btn) => {
@@ -837,8 +882,8 @@
             const teamGraphVisible = teamMenu && !teamMenu.classList.contains('hidden') &&
                 teamMemberView && !teamMemberView.classList.contains('hidden') && myTeamCode;
 
-            if (rankingVisible) socket.emit('request-global-rankings');
-            if (teamGraphVisible) socket.emit('request-team-details', myTeamCode);
+            if (rankingVisible) socket.emit('request-global-rankings', graphSocketPayload());
+            if (teamGraphVisible) socket.emit('request-team-details', { code: myTeamCode, ...graphSocketPayload() });
         }
 
         function restartGraphRefreshTimer() {
@@ -873,7 +918,7 @@
             }
 
             showScreen('ranking-menu');
-            socket.emit('request-global-rankings');
+            socket.emit('request-global-rankings', graphSocketPayload());
         }
 
         function showTeamMenu() {
@@ -911,28 +956,34 @@
 
             const chartColors = ['#ffd200', '#0064a4', '#4caf50', '#f44336', '#9c27b0'];
 
-            const datasets = topFive.map((team, i) => ({
+            const datasets = topFive.map((team, i) => {
+                const pts = normalizeTeamHistoryForChart(team.history);
+                return {
                 label: team.name,
-                data: team.history,
+                data: pts.length ? pts : [{ x: Date.now(), y: typeof team.growth === 'number' ? team.growth : 0 }],
+                parsing: false,
                 borderColor: chartColors[i],
                 backgroundColor: chartColors[i],
                 borderWidth: 2,
                 tension: 0.3,
                 pointRadius: 3,
                 fill: false
-            }));
+            };
+            });
 
             globalRankingChart = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: Array(datasets[0]?.data.length || 0).fill(""),
-                    datasets: datasets
-                },
+                data: { datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: { mode: 'nearest', intersect: true, axis: 'x' },
                     scales: {
-                        x: { grid: { display: false }, ticks: { display: false } },
+                        x: {
+                            type: 'linear',
+                            display: false,
+                            grid: { display: false }
+                        },
                         y: { 
                             grid: { color: '#222' }, 
                             ticks: { color: '#888', callback: v => v + '%' } 
@@ -943,7 +994,8 @@
                             display: true,
                             position: 'bottom',
                             labels: { color: '#888', font: { size: 10 }, usePointStyle: true }
-                        }
+                        },
+                        tooltip: graphLineTooltipOptions()
                     }
                 }
             });
@@ -1182,7 +1234,7 @@
                 memberView.style.display = 'grid';
                 
                 socket.emit('join-team-chat', myTeamCode);
-                socket.emit('request-team-details', myTeamCode);
+                socket.emit('request-team-details', { code: myTeamCode, ...graphSocketPayload() });
                 
                 if (teamPerformanceChart) {
                     setTimeout(() => teamPerformanceChart.resize(), 0);
@@ -1255,13 +1307,16 @@
                 teamPerformanceChart.destroy();
             }
 
+            const points = normalizeTeamHistoryForChart(historyData);
+            const chartPoints = points.length ? points : [{ x: Date.now(), y: 0 }];
+
             teamPerformanceChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: historyData.map(() => ""),
                     datasets: [{
                         label: 'Avg Member Growth %',
-                        data: historyData,
+                        data: chartPoints,
+                        parsing: false,
                         borderColor: '#ffd200',
                         backgroundColor: 'rgba(255, 210, 0, 0.1)',
                         fill: true,
@@ -1273,10 +1328,12 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: { mode: 'nearest', intersect: true, axis: 'x' },
                     scales: {
-                        x: { 
+                        x: {
+                            type: 'linear',
                             display: false,
-                            grid: { display: false } 
+                            grid: { display: false }
                         },
                         y: { 
                             grid: { color: '#222' }, 
@@ -1288,7 +1345,7 @@
                     },
                     plugins: { 
                         legend: { display: false },
-                        tooltip: { enabled: true }
+                        tooltip: graphLineTooltipOptions()
                     }
                 }
             });
@@ -1605,7 +1662,7 @@
             toggleJoinModal(false);
             myTeamCode = data.code;
             showScreen('team-menu');
-            socket.emit('request-team-details', data.code);
+            socket.emit('request-team-details', { code: data.code, ...graphSocketPayload() });
             handleTeamViewLogic();
         });
 
@@ -1640,7 +1697,7 @@
         socket.on('team-transfer-success', (data) => {
             if (!data || data.teamCode !== myTeamCode) return;
             showPopup(`${data.from} sent $${Number(data.amount).toLocaleString()} to ${data.to}`, 'gold');
-            socket.emit('request-team-details', myTeamCode);
+            socket.emit('request-team-details', { code: myTeamCode, ...graphSocketPayload() });
         });
 
         socket.on('lobby-list', (data) => {
@@ -1729,8 +1786,6 @@
                 return `0.0%`;
             });
 
-                initTeamChart(data.history || [0]);
-
                 const list = document.getElementById('member-list-ui');
                 list.innerHTML = data.members.map(m => {
                     const isPositive = parseFloat(m.growth) >= 0;
@@ -1750,7 +1805,7 @@
                     `;
                 }).join('');
 
-                if (data.history) initTeamChart(data.history);
+                initTeamChart(data.history || []);
             });
 
         socket.on('lobby-list-update', (data) => {

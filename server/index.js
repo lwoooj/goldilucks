@@ -38,7 +38,7 @@ const teamSchema = new mongoose.Schema({
     leader: String,
     members: [String], 
     vault: { type: Number, default: 0 },
-    performanceHistory: { type: [Number], default: [0] }
+    performanceHistory: { type: Array, default: [] }
 });
 
 const Team = mongoose.model('Team', teamSchema);
@@ -53,22 +53,88 @@ function toOneDecimal(value) {
     return parseFloat(value.toFixed(1));
 }
 
-function getSyncedPerformanceHistory(team, currentGrowth) {
-    const rawHistory = Array.isArray(team.performanceHistory) ? team.performanceHistory.filter(Number.isFinite) : [];
-    if (rawHistory.length === 0) return [toOneDecimal(currentGrowth)];
+const DEFAULT_GRAPH_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_HISTORY_POINTS = 14;
 
-    const history = [...rawHistory];
-    if (history.length === 1 && history[0] === 0) {
-        history[0] = toOneDecimal(currentGrowth);
-        return history;
+function normalizePerformanceHistory(raw) {
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+
+    if (typeof raw[0] === 'number' && Number.isFinite(raw[0])) {
+        const now = Date.now();
+        const step = 5 * 60 * 1000;
+        return raw.map((v, i) => ({
+            at: new Date(now - (raw.length - 1 - i) * step),
+            value: toOneDecimal(v)
+        }));
     }
 
-    // Keep time-series shape but always sync latest point to current growth.
-    history[history.length - 1] = toOneDecimal(currentGrowth);
-    return history;
+    return raw
+        .map((p) => {
+            if (!p || typeof p !== 'object') return null;
+            const at = p.at != null ? new Date(p.at) : new Date();
+            const value = toOneDecimal(Number(p.value));
+            if (!Number.isFinite(value)) return null;
+            return { at, value };
+        })
+        .filter(Boolean);
 }
 
-async function buildTeamMetrics(team) {
+function historyToClient(points) {
+    return points.map((p) => ({
+        t: new Date(p.at).getTime(),
+        v: toOneDecimal(p.value)
+    }));
+}
+
+async function syncTeamPerformanceHistory(team, currentGrowth, intervalMs) {
+    const growth = toOneDecimal(currentGrowth);
+    let points = normalizePerformanceHistory(team.performanceHistory);
+    const now = Date.now();
+
+    if (points.length === 0) {
+        points.push({ at: new Date(now), value: growth });
+    } else {
+        const last = points[points.length - 1];
+        const lastAt = new Date(last.at).getTime();
+        if (now - lastAt >= intervalMs) {
+            points.push({ at: new Date(now), value: growth });
+        } else {
+            points[points.length - 1] = { at: last.at, value: growth };
+        }
+    }
+
+    while (points.length > MAX_HISTORY_POINTS) points.shift();
+
+    team.performanceHistory = points.map((p) => ({
+        at: p.at instanceof Date ? p.at : new Date(p.at),
+        value: typeof p.value === 'number' ? p.value : parseFloat(p.value)
+    }));
+
+    await team.save();
+    return points;
+}
+
+function parseGraphIntervalMs(payload) {
+    if (payload && typeof payload === 'object' && payload.intervalMs != null) {
+        const ms = Number(payload.intervalMs);
+        if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+    return DEFAULT_GRAPH_INTERVAL_MS;
+}
+
+function getDisplayHistoryPoints(team, avgGrowth) {
+    const points = normalizePerformanceHistory(team.performanceHistory);
+    const growth = toOneDecimal(avgGrowth);
+    if (points.length === 0) {
+        return historyToClient([{ at: new Date(), value: growth }]);
+    }
+    const last = points[points.length - 1];
+    const copy = [...points];
+    copy[copy.length - 1] = { at: last.at, value: growth };
+    return historyToClient(copy);
+}
+
+async function buildTeamMetrics(team, intervalMs = DEFAULT_GRAPH_INTERVAL_MS, persistSnapshot = true) {
     const memberList = team.members || [];
     const members = await User.find({ username: { $in: memberList } });
 
@@ -87,19 +153,29 @@ async function buildTeamMetrics(team) {
         : 0;
     const avgGrowth = toOneDecimal(avgGrowthRaw);
 
+    let historyPoints;
+    if (members.length === 0) {
+        historyPoints = historyToClient(normalizePerformanceHistory(team.performanceHistory));
+    } else if (persistSnapshot) {
+        const synced = await syncTeamPerformanceHistory(team, avgGrowth, intervalMs);
+        historyPoints = historyToClient(synced);
+    } else {
+        historyPoints = getDisplayHistoryPoints(team, avgGrowth);
+    }
+
     return {
         members,
         memberData,
         totalBankroll,
         avgGrowth,
-        history: getSyncedPerformanceHistory(team, avgGrowth)
+        history: historyPoints
     };
 }
 
-async function getGlobalRankingsPayload() {
+async function getGlobalRankingsPayload(intervalMs = DEFAULT_GRAPH_INTERVAL_MS, persistSnapshots = true) {
     const teams = await Team.find({});
     const allTeamsData = await Promise.all(teams.map(async (team) => {
-        const metrics = await buildTeamMetrics(team);
+        const metrics = await buildTeamMetrics(team, intervalMs, persistSnapshots);
         return {
             name: team.name,
             growth: metrics.avgGrowth,
@@ -121,7 +197,7 @@ async function emitTeamAndRankingSync(teamCodes = []) {
     await Promise.all(uniqueTeamCodes.map(async (code) => {
         const team = await Team.findOne({ code });
         if (!team) return;
-        const metrics = await buildTeamMetrics(team);
+        const metrics = await buildTeamMetrics(team, DEFAULT_GRAPH_INTERVAL_MS, false);
         const payload = {
             name: team.name,
             code: team.code,
@@ -141,7 +217,7 @@ async function emitTeamAndRankingSync(teamCodes = []) {
         }
     }));
 
-    io.emit('global-rankings-data', await getGlobalRankingsPayload());
+    io.emit('global-rankings-data', await getGlobalRankingsPayload(DEFAULT_GRAPH_INTERVAL_MS, false));
 }
 
 function buildLobbyListPayload() {
@@ -174,22 +250,6 @@ async function emitLobbySnapshotToUser(username) {
         }
     }
 }
-
-async function takeTeamSnapshots() {
-    const teams = await Team.find({});
-    for (let team of teams) {
-        const metrics = await buildTeamMetrics(team);
-        if (metrics.members.length === 0) continue;
-
-        team.performanceHistory.push(parseFloat(metrics.avgGrowth.toFixed(2)));
-        if (team.performanceHistory.length > 14) team.performanceHistory.shift();
-        
-        await team.save();
-    }
-    console.log("✅ 12-Hour Team Snapshots Updated");
-}
-
-setInterval(takeTeamSnapshots, 43200000);
 
 function createDeck() {
     let deck = [];
@@ -363,15 +423,20 @@ io.on('connection', (socket) => {
         }
     });
     
-    socket.on('request-global-rankings', async () => {
-        socket.emit('global-rankings-data', await getGlobalRankingsPayload());
+    socket.on('request-global-rankings', async (payload) => {
+        const intervalMs = parseGraphIntervalMs(payload);
+        socket.emit('global-rankings-data', await getGlobalRankingsPayload(intervalMs));
     });
 
-    socket.on('request-team-details', async (code) => {
+    socket.on('request-team-details', async (payload) => {
         try {
+            const code = typeof payload === 'string' ? payload : payload?.code;
+            const intervalMs = parseGraphIntervalMs(typeof payload === 'object' ? payload : null);
+            if (!code) return;
+
             const team = await Team.findOne({ code });
             if (!team) return;
-            const metrics = await buildTeamMetrics(team);
+            const metrics = await buildTeamMetrics(team, intervalMs);
 
             socket.emit('team-details-response', {
                 name: team.name,
