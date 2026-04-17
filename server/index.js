@@ -43,21 +43,104 @@ const teamSchema = new mongoose.Schema({
 
 const Team = mongoose.model('Team', teamSchema);
 
+const STARTING_BANKROLL = 10000;
+
+function getGrowthPercent(bankroll = STARTING_BANKROLL) {
+    return ((bankroll / STARTING_BANKROLL) - 1) * 100;
+}
+
+function toOneDecimal(value) {
+    return parseFloat(value.toFixed(1));
+}
+
+function getSyncedPerformanceHistory(team, currentGrowth) {
+    const rawHistory = Array.isArray(team.performanceHistory) ? team.performanceHistory.filter(Number.isFinite) : [];
+    if (rawHistory.length === 0) return [toOneDecimal(currentGrowth)];
+
+    const history = [...rawHistory];
+    if (history.length === 1 && history[0] === 0) {
+        history[0] = toOneDecimal(currentGrowth);
+        return history;
+    }
+
+    // Keep time-series shape but always sync latest point to current growth.
+    history[history.length - 1] = toOneDecimal(currentGrowth);
+    return history;
+}
+
+async function buildTeamMetrics(team) {
+    const memberList = team.members || [];
+    const members = await User.find({ username: { $in: memberList } });
+
+    const memberData = members.map((m) => {
+        const bankroll = m.bankroll || STARTING_BANKROLL;
+        return {
+            username: m.username,
+            growth: toOneDecimal(getGrowthPercent(bankroll))
+        };
+    });
+
+    const totalBankroll = members.reduce((sum, m) => sum + (m.bankroll || STARTING_BANKROLL), 0);
+    const avgGrowthRaw = members.length
+        ? members.reduce((sum, m) => sum + getGrowthPercent(m.bankroll || STARTING_BANKROLL), 0) / members.length
+        : 0;
+    const avgGrowth = toOneDecimal(avgGrowthRaw);
+
+    return {
+        members,
+        memberData,
+        totalBankroll,
+        avgGrowth,
+        history: getSyncedPerformanceHistory(team, avgGrowth)
+    };
+}
+
+async function getGlobalRankingsPayload() {
+    const teams = await Team.find({});
+    const allTeamsData = await Promise.all(teams.map(async (team) => {
+        const metrics = await buildTeamMetrics(team);
+        return {
+            name: team.name,
+            growth: metrics.avgGrowth,
+            memberCount: team.members.length,
+            history: metrics.history
+        };
+    }));
+
+    allTeamsData.sort((a, b) => b.growth - a.growth);
+    return {
+        allTeams: allTeamsData,
+        topFive: allTeamsData.slice(0, 5)
+    };
+}
+
+async function emitTeamAndRankingSync(teamCodes = []) {
+    const uniqueTeamCodes = [...new Set((teamCodes || []).filter(Boolean))];
+
+    await Promise.all(uniqueTeamCodes.map(async (code) => {
+        const team = await Team.findOne({ code });
+        if (!team) return;
+        const metrics = await buildTeamMetrics(team);
+        io.to(code).emit('team-details-response', {
+            name: team.name,
+            code: team.code,
+            members: metrics.memberData,
+            totalBankroll: metrics.totalBankroll,
+            growth: metrics.avgGrowth,
+            history: metrics.history
+        });
+    }));
+
+    io.emit('global-rankings-data', await getGlobalRankingsPayload());
+}
+
 async function takeTeamSnapshots() {
     const teams = await Team.find({});
     for (let team of teams) {
-        const members = await User.find({ username: { $in: team.members } });
-        if (members.length === 0) continue;
+        const metrics = await buildTeamMetrics(team);
+        if (metrics.members.length === 0) continue;
 
-        let totalPercent = 0;
-        members.forEach(m => {
-            const memberGrowth = ((m.bankroll / 10000) - 1) * 100;
-            totalPercent += memberGrowth;
-        });
-
-        const avgPercent = totalPercent / members.length;
-
-        team.performanceHistory.push(parseFloat(avgPercent.toFixed(2)));
+        team.performanceHistory.push(parseFloat(metrics.avgGrowth.toFixed(2)));
         if (team.performanceHistory.length > 14) team.performanceHistory.shift();
         
         await team.save();
@@ -171,7 +254,7 @@ io.on('connection', (socket) => {
         let user = await User.findOne({ username });
         if (!user) { user = new User({ username, bankroll: 10000 }); await user.save(); }
         socket.username = username;
-        socket.bankroll = user.bankroll;
+        socket.bankroll = Math.max(0, user.bankroll || 0);
         socket.teamCode = user.teamCode;
         socket.emit('lobby-list', { 
             list: Object.keys(rooms).map(id => ({ id, count: rooms[id].order.length, status: rooms[id].status })), 
@@ -223,6 +306,7 @@ io.on('connection', (socket) => {
             user.teamCode = teamCode;
             await user.save();
             socket.teamCode = teamCode;
+            await emitTeamAndRankingSync([teamCode]);
 
             socket.emit('team-created', { name: data.name, code: teamCode });
             
@@ -239,74 +323,22 @@ io.on('connection', (socket) => {
     });
     
     socket.on('request-global-rankings', async () => {
-        const teams = await Team.find({});
-        
-        // Process all teams for the list
-        const allTeamsData = await Promise.all(teams.map(async (t) => {
-            const members = await User.find({ username: { $in: t.members } });
-            let totalPercent = 0;
-            members.forEach(m => totalPercent += (((m.bankroll / 10000) - 1) * 100));
-            const avgGrowth = members.length > 0 ? (totalPercent / members.length) : 0;
-
-            return {
-                name: t.name,
-                growth: parseFloat(avgGrowth.toFixed(1)),
-                memberCount: t.members.length,
-                history: t.performanceHistory
-            };
-        }));
-
-        // Sort by growth descending
-        allTeamsData.sort((a, b) => b.growth - a.growth);
-
-        // Take top 5 for the chart
-        const topFive = allTeamsData.slice(0, 5);
-
-        socket.emit('global-rankings-data', {
-            allTeams: allTeamsData,
-            topFive: topFive
-        });
+        socket.emit('global-rankings-data', await getGlobalRankingsPayload());
     });
 
     socket.on('request-team-details', async (code) => {
         try {
             const team = await Team.findOne({ code });
             if (!team) return;
-
-            const memberList = team.members || [];
-            const members = await User.find({ username: { $in: memberList } });
-
-            const memberData = members.map(m => {
-                const bankroll = m.bankroll || 10000;
-                const growth = (((bankroll / 10000) - 1) * 100).toFixed(1);
-                return {
-                    username: m.username,
-                    growth: growth
-                };
-            });
-        
-            const totalBankroll = members.reduce((sum, m) => sum + (m.bankroll || 10000), 0);
-
-            let avgGrowth = 0;
-            if (members.length > 0) {
-                let totalPercent = 0;
-                members.forEach(m => {
-                    totalPercent += ((( (m.bankroll || 10000) / 10000) - 1) * 100);
-                });
-                avgGrowth = parseFloat((totalPercent / members.length).toFixed(1));
-            }
-
-            const performanceHistory = team.performanceHistory && team.performanceHistory.length > 0 
-                ? team.performanceHistory 
-                : [0];
+            const metrics = await buildTeamMetrics(team);
 
             socket.emit('team-details-response', {
                 name: team.name,
                 code: team.code,
-                members: memberData, 
-                totalBankroll: totalBankroll,
-                growth: avgGrowth,
-                history: performanceHistory
+                members: metrics.memberData, 
+                totalBankroll: metrics.totalBankroll,
+                growth: metrics.avgGrowth,
+                history: metrics.history
             });
         } catch (err) {
             console.error("Team Details Error:", err);
@@ -341,26 +373,7 @@ io.on('connection', (socket) => {
         socket.teamCode = team.code;
 
         socket.emit('team-joined', { name: team.name, code: team.code });
-
-        const members = await User.find({ username: { $in: team.members } });
-        const memberData = members.map(m => ({
-            username: m.username,
-            growth: (((m.bankroll / 10000) - 1) * 100).toFixed(1)
-        }));
-        
-        const totalBankroll = members.reduce((sum, m) => sum + m.bankroll, 0);
-        let totalPercent = 0;
-        members.forEach(m => totalPercent += (((m.bankroll / 10000) - 1) * 100));
-        const avgGrowth = members.length ? (totalPercent / members.length).toFixed(1) : '0.0';
-
-        io.to(team.code).emit('team-details-response', {
-            name: team.name,
-            code: team.code,
-            members: memberData,
-            totalBankroll,
-            growth: avgGrowth,
-            history: team.performanceHistory || [0]
-        });
+        await emitTeamAndRankingSync([team.code]);
 
         socket.emit('lobby-list', { 
             bankroll: user.bankroll,
@@ -372,6 +385,7 @@ io.on('connection', (socket) => {
     socket.on('quit-team', async () => {
         const user = await User.findOne({ username: socket.username });
         if (!user || !user.teamCode) return;
+        const previousTeamCode = user.teamCode;
 
         const team = await Team.findOne({ code: user.teamCode });
         user.teamCode = null;
@@ -389,6 +403,8 @@ io.on('connection', (socket) => {
                 await team.save();
             }
         }
+
+        await emitTeamAndRankingSync([previousTeamCode]);
 
         socket.emit('team-left');
         socket.emit('lobby-list', {
@@ -431,9 +447,10 @@ io.on('connection', (socket) => {
             for (let id of room.order) {
                 const p = room.players[id];
                 p.startChips = p.chips; 
-                
-                p.chips -= ante;
-                room.pot += ante;
+
+                const antePaid = Math.min(ante, Math.max(0, p.chips));
+                p.chips = Math.max(0, p.chips - antePaid);
+                room.pot += antePaid;
                 await User.findOneAndUpdate({ username: p.username }, { bankroll: p.chips });
             }
             room.status = "playing";
@@ -462,12 +479,18 @@ io.on('connection', (socket) => {
         else if (data.type === 'check') { p.last = "CHECK"; }
         else if (data.type === 'call') {
             const diff = room.highBet - p.bet;
+            if (diff < 0 || diff > p.chips) {
+                return socket.emit('error-msg', "Not enough chips to call.");
+            }
             p.chips -= diff; p.bet += diff; room.pot += diff; p.last = `CALL $${diff}`;
         }
         else if (data.type === 'raise') {
             const amt = parseInt(data.amount);
             if (isNaN(amt) || amt <= room.highBet) return socket.emit('error-msg', "Raise must be higher than current bet!");
             const added = amt - p.bet;
+            if (added <= 0 || added > p.chips) {
+                return socket.emit('error-msg', "Raise amount exceeds your chips.");
+            }
             p.chips -= added; p.bet = amt; room.pot += added;
             room.highBet = amt; p.last = `RAISE $${amt}`;
             room.order.forEach(pid => { if (pid !== socket.id) room.players[pid].acted = false; });
@@ -520,7 +543,23 @@ io.on('connection', (socket) => {
     async function resolveWinner(room, winnerId, reason) {
         const winner = room.players[winnerId];
         winner.chips += room.pot;
-        await User.findOneAndUpdate({ username: winner.username }, { bankroll: winner.chips });
+
+        const teamCodesToSync = new Set();
+        for (const playerId of room.order) {
+            const player = room.players[playerId];
+            if (!player) continue;
+            const updatedUser = await User.findOneAndUpdate(
+                { username: player.username },
+                { bankroll: Math.max(0, player.chips) },
+                { returnDocument: 'after' }
+            );
+            if (updatedUser && updatedUser.teamCode) teamCodesToSync.add(updatedUser.teamCode);
+        }
+
+        if (teamCodesToSync.size > 0) {
+            await emitTeamAndRankingSync([...teamCodesToSync]);
+        }
+
         io.to(socket.roomId).emit('done', { win: winnerId, amount: room.pot, msg: reason });
         room.status = "waiting";
         room.pot = 0;
@@ -545,7 +584,7 @@ io.on('connection', (socket) => {
             if (p) {
                 const updatedUser = await User.findOneAndUpdate(
                     { username: p.username }, 
-                    { bankroll: p.chips },
+                    { bankroll: Math.max(0, p.chips) },
                     { returnDocument: 'after' } 
                 );
 

@@ -496,9 +496,17 @@
         </div>
 
         <div id="right-graph-panel" style="background: rgba(10, 10, 10, 0.6); border-radius: 12px; border: 1px solid #333; padding: 25px; display: flex; flex-direction: column; min-width: 0;">
-            <div style="margin-bottom: 20px;">
-                <h2 style="color: var(--uci-blue);">PERFORMANCE OVERVIEW</h2>
-                <p style="color: #666; font-size: 0.7rem; letter-spacing: 1px;">TOP 5 TEAMS // 12H DATA POINTS</p>
+            <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                <div>
+                    <h2 style="color: var(--uci-blue);">PERFORMANCE OVERVIEW</h2>
+                    <p id="ranking-interval-label" style="color: #666; font-size: 0.7rem; letter-spacing: 1px;">TOP 5 TEAMS // 5 MIN UPDATES</p>
+                </div>
+                <button id="ranking-interval-btn" class="graph-interval-btn" onclick="cycleGraphInterval()"
+                    style="background: none; border: 1px solid #444; color: #888; font-size: 0.65rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;"
+                    onmouseover="this.style.borderColor='var(--uci-blue)'; this.style.color='var(--uci-blue)'"
+                    onmouseout="this.style.borderColor='#444'; this.style.color='#888'">
+                    5 MIN
+                </button>
             </div>
             <div style="flex-grow: 1; position: relative; min-height: 0;">
                 <canvas id="globalRankingChart"></canvas>
@@ -595,10 +603,17 @@
                     <div>
                         <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; opacity: 0.7;">PERFORMANCE INDEX</p>
                         <div id="team-growth-ui" style="font-size: 2.2rem; color: #4caf50; font-weight: 900; margin-top: 5px;">0.0%</div>
+                        <p id="team-interval-label" style="color: #666; font-size: 0.62rem; letter-spacing: 1px; margin-top: 4px;">5 MIN UPDATES</p>
                     </div>
-                    <div style="text-align: right;">
+                    <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
                         <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; opacity: 0.7;">TEAM VAULT</p>
                         <div id="team-vault-ui" style="font-size: 1.1rem; font-weight: 900; padding-top: 5px; color: #888;">$0</div>
+                        <button id="team-interval-btn" class="graph-interval-btn" onclick="cycleGraphInterval()"
+                            style="background: none; border: 1px solid #444; color: #888; font-size: 0.65rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;"
+                            onmouseover="this.style.borderColor='var(--uci-gold)'; this.style.color='var(--uci-gold)'"
+                            onmouseout="this.style.borderColor='#444'; this.style.color='#888'">
+                            5 MIN
+                        </button>
                     </div>
                 </div>
                 <div style="flex-grow: 1; width: 100%; min-height: 0;">
@@ -757,11 +772,64 @@
         let performanceChart;
         let teamPerformanceChart;
         let currentMaxBetAmount = 0;
+        let zeroChipsModalOpen = false;
         let chipHistory = JSON.parse(localStorage.getItem('poker_history')) || [10000];
         const socket = io(window.location.origin);
 
+        const GRAPH_INTERVALS = [
+            { label: '5 MIN', ms: 5 * 60 * 1000 },
+            { label: '1 HR', ms: 60 * 60 * 1000 },
+            { label: '12 HR', ms: 12 * 60 * 60 * 1000 }
+        ];
+        let activeGraphIntervalIndex = 0;
+        let graphRefreshTimer = null;
+
+        function getActiveGraphInterval() {
+            return GRAPH_INTERVALS[activeGraphIntervalIndex];
+        }
+
+        function updateGraphIntervalUI() {
+            const { label } = getActiveGraphInterval();
+            document.querySelectorAll('.graph-interval-btn').forEach((btn) => {
+                btn.innerText = label;
+            });
+
+            const rankingIntervalLabel = document.getElementById('ranking-interval-label');
+            if (rankingIntervalLabel) rankingIntervalLabel.innerText = `TOP 5 TEAMS // ${label} UPDATES`;
+
+            const teamIntervalLabel = document.getElementById('team-interval-label');
+            if (teamIntervalLabel) teamIntervalLabel.innerText = `${label} UPDATES`;
+        }
+
+        function refreshTimedGraphs() {
+            const rankingMenu = document.getElementById('ranking-menu');
+            const teamMenu = document.getElementById('team-menu');
+            const teamMemberView = document.getElementById('team-member-view');
+
+            const rankingVisible = rankingMenu && !rankingMenu.classList.contains('hidden');
+            const teamGraphVisible = teamMenu && !teamMenu.classList.contains('hidden') &&
+                teamMemberView && !teamMemberView.classList.contains('hidden') && myTeamCode;
+
+            if (rankingVisible) socket.emit('request-global-rankings');
+            if (teamGraphVisible) socket.emit('request-team-details', myTeamCode);
+        }
+
+        function restartGraphRefreshTimer() {
+            if (graphRefreshTimer) clearInterval(graphRefreshTimer);
+            graphRefreshTimer = setInterval(refreshTimedGraphs, getActiveGraphInterval().ms);
+        }
+
+        function cycleGraphInterval() {
+            activeGraphIntervalIndex = (activeGraphIntervalIndex + 1) % GRAPH_INTERVALS.length;
+            updateGraphIntervalUI();
+            restartGraphRefreshTimer();
+            refreshTimedGraphs();
+        }
+
         window.onload = () => {
             initChart();
+            updateGraphIntervalUI();
+            restartGraphRefreshTimer();
         };
 
         function showRanking() {
@@ -1294,7 +1362,14 @@
             raiseInput.value = '';
         }
 
-        function leaveGame() {
+        function leaveGame(force = false) {
+            if (force) {
+                socket.emit('leave-room');
+                document.getElementById('my-hand').innerHTML = '';
+                document.getElementById('comm-ui').innerHTML = '';
+                document.getElementById('pot-ui').innerText = '$0';
+                return;
+            }
             showAppModal({
                 variant: 'confirm',
                 title: 'Leave table?',
@@ -1541,6 +1616,21 @@
             const me = room.players[socket.id];
             if(!me) return;
 
+            const handFinished = room.status !== 'playing';
+            if (handFinished && me.chips <= 0 && !zeroChipsModalOpen) {
+                zeroChipsModalOpen = true;
+                showAppModal({
+                    variant: 'warn',
+                    title: 'Out of chips',
+                    sub: 'You have $0 and must leave this table.',
+                    primaryText: 'RETURN TO LOBBY',
+                    dismissOnOverlay: false,
+                    onPrimary: () => leaveGame(true)
+                });
+            } else if (me.chips > 0) {
+                zeroChipsModalOpen = false;
+            }
+
             // HUD Sync
             document.getElementById('hud-username').innerText = me.username;
             document.getElementById('hud-balance').innerText = "$" + me.chips.toLocaleString();
@@ -1608,6 +1698,7 @@
         });
 
         socket.on('back-to-lobby', () => { 
+            zeroChipsModalOpen = false;
             showScreen('lobby');
             console.log("Returned to lobby by server.");
         });
