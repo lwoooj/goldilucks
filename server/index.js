@@ -30,6 +30,8 @@ const User = mongoose.model('User', userSchema);
 const suits = ['♠', '♥', '♦', '♣'];
 const values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 let rooms = {};
+let matchmakingQueue = []; // array of socket ids waiting for a match
+const MATCH_SIZE = 6;
 
 const teamSchema = new mongoose.Schema({
     name: { type: String, unique: true },
@@ -351,6 +353,10 @@ io.on('connection', (socket) => {
         io.emit('lobby-list-update', { list: roomData });
     };
 
+    const broadcastQueueCount = () => {
+        io.emit('queue-update', { count: matchmakingQueue.length, total: MATCH_SIZE });
+    };
+
     socket.on('login', async (username) => {
         let user = await User.findOne({ username });
         if (!user) { user = new User({ username, bankroll: 10000 }); await user.save(); }
@@ -364,27 +370,42 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('create-room', async () => {
+    socket.on('join-queue', async () => {
         if (!socket.username) return;
-        const user = await User.findOne({ username: socket.username });
-        if (user) {
-            socket.bankroll = user.bankroll;
-            const roomId = "TABLE_" + Math.random().toString(36).substring(7).toUpperCase();
-            rooms[roomId] = { players: {}, community: [], pot: 0, highBet: 0, order: [], turn: 0, phase: 0, status: "waiting", deck: [] };
-            joinRoom(socket, roomId);
-        }
-        broadcastLobbyList();
-    });
+        // Prevent duplicate queue entries or joining while already in a room
+        if (matchmakingQueue.includes(socket.id)) return;
+        if (socket.roomId && rooms[socket.roomId]) return;
 
-    socket.on('join-room', async (roomId) => {
-        const room = rooms[roomId];
-        if (room && room.order.length < 6 && room.status === "waiting") { 
-            const user = await User.findOne({ username: socket.username });
-            if (user) {
-                socket.bankroll = user.bankroll;
-                joinRoom(socket, roomId);
+        const user = await User.findOne({ username: socket.username });
+        if (user) socket.bankroll = user.bankroll;
+
+        matchmakingQueue.push(socket.id);
+        broadcastQueueCount();
+
+        // If we have enough players, start a match
+        if (matchmakingQueue.length >= MATCH_SIZE) {
+            const players = matchmakingQueue.splice(0, MATCH_SIZE);
+            broadcastQueueCount();
+
+            const roomId = "TABLE_" + Math.random().toString(36).substring(7).toUpperCase();
+            rooms[roomId] = { id: roomId, players: {}, community: [], pot: 0, highBet: 0, order: [], turn: 0, phase: 0, status: "waiting", deck: [] };
+
+            for (const pid of players) {
+                const s = io.sockets.sockets.get(pid);
+                if (s) {
+                    // Refresh bankroll from DB for each player
+                    const u = await User.findOne({ username: s.username });
+                    if (u) s.bankroll = u.bankroll;
+                    joinRoom(s, roomId);
+                    s.emit('match-found', { roomId });
+                }
             }
         }
+    });
+
+    socket.on('leave-queue', () => {
+        matchmakingQueue = matchmakingQueue.filter(id => id !== socket.id);
+        broadcastQueueCount();
     });
 
     socket.on('request-create-team', async (data) => {
@@ -780,6 +801,13 @@ io.on('connection', (socket) => {
                 io.to(roomId).emit('update', rooms[roomId]);
             }
             socket.emit('back-to-lobby');
+        }
+    });
+
+    socket.on('disconnect', () => {
+        if (matchmakingQueue.includes(socket.id)) {
+            matchmakingQueue = matchmakingQueue.filter(id => id !== socket.id);
+            broadcastQueueCount();
         }
     });
 });

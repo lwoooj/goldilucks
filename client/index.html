@@ -14,7 +14,7 @@
         body { background: var(--dark-bg); color: white; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; overflow: hidden; }
         .hidden { display: none !important; }
 
-        #auth-container, #lobby, #table-browser, #team-menu, #ranking-menu {
+        #auth-container, #lobby, #matchmaking, #team-menu, #ranking-menu {
             transition: opacity 240ms ease, transform 240ms ease;
         }
 
@@ -694,7 +694,7 @@
                         style="padding: 25px; font-size: 1.3rem; width: 100%; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0, 100, 164, 0.2); background: #0064a4; color: white;" 
                         onmouseover="this.style.background='#0078c2'; this.style.boxShadow='0 6px 20px rgba(0, 100, 164, 0.4)'; this.style.transform='translateY(-2px)';" 
                         onmouseout="this.style.background='#0064a4'; this.style.boxShadow='0 4px 15px rgba(0, 100, 164, 0.2)'; this.style.transform='translateY(0px)';"
-                        onclick="showScreen('table-browser')">
+                        onclick="joinQueue()">
                     JOIN TABLE
                 </button>
             </div>
@@ -718,13 +718,37 @@
         </div>
     </div>
 
-    <div id="table-browser" class="hidden" style="width: 600px; margin-top: 80px; padding: 40px; background: rgba(255,255,255,0.05); border-radius: 20px; border: 1px solid #333;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 20px;">
-            <h2 style="color: var(--uci-gold);">ACTIVE TABLES</h2>
-            <button class="btn-gold" onclick="socket.emit('create-room')">+ CREATE NEW</button>
+    <div id="matchmaking" class="hidden" style="width: 480px; margin-top: 80px; padding: 50px 40px; background: rgba(255,255,255,0.03); border-radius: 20px; border: 1px solid #333; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 30px;">
+        <div>
+            <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 3px; margin-bottom: 12px;">MATCHMAKING</p>
+            <h2 style="font-size: 1.6rem; font-weight: 900; color: white; margin: 0;">FINDING A TABLE</h2>
         </div>
-        <div id="room-list" style="min-height: 200px;"></div>
-        <button onclick="showScreen('lobby')" style="margin-top: 20px; background: none; color: #888; text-decoration: underline; border: none; cursor: pointer;">back to dashboard</button>
+
+        <!-- Player pip grid -->
+        <div id="queue-pips" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; width: 100%;">
+            <!-- filled by JS -->
+        </div>
+
+        <div style="width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="color: #555; font-size: 0.7rem; letter-spacing: 1px;">PLAYERS FOUND</span>
+                <span id="queue-count-text" style="color: var(--uci-gold); font-weight: 900; font-family: monospace; font-size: 1rem;">0 / 6</span>
+            </div>
+            <div style="background: #111; border-radius: 4px; height: 6px; overflow: hidden; border: 1px solid #222;">
+                <div id="queue-bar" style="height: 100%; width: 0%; background: var(--uci-gold); border-radius: 4px; transition: width 0.4s ease;"></div>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; color: #444; font-size: 0.75rem; font-family: monospace;">
+            <span id="queue-dots">SEARCHING</span>
+        </div>
+
+        <button onclick="leaveQueue()"
+                style="background: none; border: 1px solid #444; color: #666; font-size: 0.75rem; padding: 8px 24px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-weight: bold; letter-spacing: 1px;"
+                onmouseover="this.style.borderColor='red'; this.style.color='red'"
+                onmouseout="this.style.borderColor='#444'; this.style.color='#666'">
+            CANCEL
+        </button>
     </div>
 
     <div id="game" class="hidden">
@@ -1021,7 +1045,7 @@
         });
 
         function showScreen(screenId) {
-            const screens = ['auth-container', 'lobby', 'table-browser', 'game', 'team-menu', 'ranking-menu'];
+            const screens = ['auth-container', 'lobby', 'matchmaking', 'game', 'team-menu', 'ranking-menu'];
             
             screens.forEach(id => {
                 const el = document.getElementById(id);
@@ -1403,6 +1427,67 @@
             showPopup('You have left the team.', 'gold');
         });
 
+        // ── MATCHMAKING ──────────────────────────────────────────────
+        let queueDotsTimer = null;
+
+        function joinQueue() {
+            socket.emit('join-queue');
+            showScreen('matchmaking');
+            updateQueueUI(0);
+            startQueueDots();
+        }
+
+        function leaveQueue() {
+            socket.emit('leave-queue');
+            if (queueDotsTimer) clearInterval(queueDotsTimer);
+            showScreen('lobby');
+        }
+
+        function startQueueDots() {
+            if (queueDotsTimer) clearInterval(queueDotsTimer);
+            const el = document.getElementById('queue-dots');
+            if (!el) return;
+            const states = ['SEARCHING', 'SEARCHING .', 'SEARCHING ..', 'SEARCHING ...'];
+            let i = 0;
+            queueDotsTimer = setInterval(() => {
+                el.innerText = states[i % states.length];
+                i++;
+            }, 500);
+        }
+
+        function updateQueueUI(count) {
+            const total = 6;
+            const countEl = document.getElementById('queue-count-text');
+            const barEl = document.getElementById('queue-bar');
+            const pipsEl = document.getElementById('queue-pips');
+            if (countEl) countEl.innerText = `${count} / ${total}`;
+            if (barEl) barEl.style.width = `${(count / total) * 100}%`;
+            if (pipsEl) {
+                pipsEl.innerHTML = Array.from({ length: total }, (_, i) => {
+                    const filled = i < count;
+                    return `<div style="
+                        width: 44px; height: 44px; border-radius: 50%;
+                        border: 2px solid ${filled ? 'var(--uci-gold)' : '#333'};
+                        background: ${filled ? 'rgba(255,210,0,0.15)' : 'rgba(255,255,255,0.02)'};
+                        transition: all 0.3s ease;
+                        display: flex; align-items: center; justify-content: center;
+                    ">
+                        ${filled ? `<div style="width:16px;height:16px;border-radius:50%;background:var(--uci-gold);opacity:0.9;"></div>` : ''}
+                    </div>`;
+                }).join('');
+            }
+        }
+
+        socket.on('queue-update', (data) => {
+            updateQueueUI(data.count);
+        });
+
+        socket.on('match-found', () => {
+            if (queueDotsTimer) clearInterval(queueDotsTimer);
+            // Game screen transition is handled by the existing 'update' event from the server
+        });
+        // ─────────────────────────────────────────────────────────────
+
         function login() {
             const val = document.getElementById('username-input').value;
             if(!val) return;
@@ -1415,10 +1500,6 @@
             if (!performanceChart) {
                 initChart();
             }
-        }
-
-        function showTableSelection() {
-            document.getElementById('table-selection').classList.toggle('hidden');
         }
 
         function act(type) { socket.emit('action', { type }); }
@@ -1748,18 +1829,6 @@
                 performanceChart.update();
             }
 
-            // 4. Render Active Tables List
-            const container = document.getElementById('room-list');
-            if (container) {
-                container.innerHTML = data.list.map(r => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.03); margin-bottom:8px; border-radius:8px; border:1px solid #222;">
-                        <span>
-                            <b style="color:var(--uci-gold);">${r.id}</b> 
-                            <small style="color:#888; margin-left:10px;">(${r.count}/6 Players)</small>
-                        </span>
-                        <button class="btn-gold" style="padding:5px 15px; font-size:0.8rem;" onclick="socket.emit('join-room', '${r.id}')">JOIN TABLE</button>
-                    </div>`).join('') || "<p style='color:#555; text-align:center; padding:20px;'>No active tables. Create one to start the competition.</p>";
-            }
 
             showScreen('lobby');
         });
@@ -1807,20 +1876,6 @@
 
                 initTeamChart(data.history || []);
             });
-
-        socket.on('lobby-list-update', (data) => {
-            const container = document.getElementById('room-list');
-            if (container) {
-                container.innerHTML = data.list.map(r => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(255,255,255,0.03); margin-bottom:8px; border-radius:8px; border:1px solid #222;">
-                        <span>
-                            <b style="color:var(--uci-gold);">${r.id}</b> 
-                            <small style="color:#888; margin-left:10px;">(${r.count}/6 Players)</small>
-                        </span>
-                        <button class="btn-gold" style="padding:5px 15px; font-size:0.8rem;" onclick="socket.emit('join-room', '${r.id}')">JOIN TABLE</button>
-                    </div>`).join('') || "<p style='color:#555; text-align:center; padding:20px;'>No active tables. Create one to start the competition.</p>";
-            }
-        });
 
         socket.on('update', (room) => {
             // Hide Lobby, Show Game
