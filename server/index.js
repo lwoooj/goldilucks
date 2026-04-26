@@ -343,6 +343,19 @@ function getHandScore(hand, community) {
     return fullHand.slice(0, 5).reduce((acc, c, i) => acc + (c.value / Math.pow(100, i)), 0);
 }
 
+function getHandName(score) {
+    if (score >= 900) return 'ROYAL FLUSH';
+    if (score >= 800) return 'STRAIGHT FLUSH';
+    if (score >= 700) return 'FOUR OF A KIND';
+    if (score >= 600) return 'FULL HOUSE';
+    if (score >= 500) return 'FLUSH';
+    if (score >= 400) return 'STRAIGHT';
+    if (score >= 300) return 'THREE OF A KIND';
+    if (score >= 200) return 'TWO PAIR';
+    if (score >= 100) return 'ONE PAIR';
+    return 'HIGH CARD';
+}
+
 io.on('connection', (socket) => {
     const broadcastLobbyList = () => {
         const roomData = Object.keys(rooms).map(id => ({ 
@@ -733,7 +746,7 @@ io.on('connection', (socket) => {
         io.to(socket.roomId).emit('update', room);
     }
 
-    async function resolveWinner(room, winnerId, reason) {
+    async function resolveWinner(room, winnerId, reason, scores = {}) {
         const winner = room.players[winnerId];
         winner.chips += room.pot;
 
@@ -753,7 +766,24 @@ io.on('connection', (socket) => {
             await emitTeamAndRankingSync([...teamCodesToSync]);
         }
 
-        io.to(socket.roomId).emit('done', { win: winnerId, amount: room.pot, msg: reason });
+        const foldWin = reason === 'Folds';
+        const winnerHand = !foldWin && scores[winnerId] != null ? getHandName(scores[winnerId]) : null;
+
+        // Emit individually so each player receives their own hand name
+        room.order.forEach(pid => {
+            const s = io.sockets.sockets.get(pid);
+            if (s) {
+                const myHand = !foldWin && scores[pid] != null ? getHandName(scores[pid]) : null;
+                s.emit('done', {
+                    win: winnerId,
+                    amount: room.pot,
+                    msg: reason,
+                    myHand,
+                    winnerHand,
+                });
+            }
+        });
+
         room.status = "waiting";
         room.pot = 0;
         io.to(socket.roomId).emit('update', room);
@@ -762,11 +792,13 @@ io.on('connection', (socket) => {
     async function showdown(room) {
         const active = room.order.filter(id => !room.players[id].folded);
         let bestId = active[0], bestScore = -1;
+        const scores = {};
         active.forEach(id => {
             const score = getHandScore(room.players[id].cards, room.community);
+            scores[id] = score;
             if (score > bestScore) { bestScore = score; bestId = id; }
         });
-        await resolveWinner(room, bestId, "Showdown");
+        await resolveWinner(room, bestId, "Showdown", scores);
     }
 
     socket.on('leave-room', async () => {

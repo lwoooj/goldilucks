@@ -1285,6 +1285,9 @@
             const v = variantMap[opts.variant] || 'info';
             card.className = 'app-modal--' + v;
 
+            // Clean up any leftover elements from previous modal
+            card.querySelectorAll('.win-ring, .win-divider, .win-meta').forEach(e => e.remove());
+
             const kicker = opts.kicker && String(opts.kicker).trim();
             kickerEl.textContent = kicker || '';
             kickerEl.style.display = kicker ? 'block' : 'none';
@@ -1352,6 +1355,24 @@
                 const sub = opts.sub != null && String(opts.sub).trim() !== '' ? String(opts.sub) : '';
                 subEl.textContent = sub;
                 subEl.style.display = sub ? 'block' : 'none';
+
+                // Meta rows for lose/info/etc variants too
+                const metaItems = opts.meta || [];
+                if (metaItems.length) {
+                    const divider = document.createElement('div');
+                    divider.style.cssText = 'height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);margin:16px auto 18px;width:100%;';
+                    const meta = document.createElement('div');
+                    meta.className = 'win-meta';
+                    metaItems.forEach(item => {
+                        const el = document.createElement('div');
+                        el.className = 'win-meta-item';
+                        el.style.opacity = '1';
+                        el.innerHTML = `<span class="win-meta-label">${item.label}</span><span class="win-meta-value">${item.value}</span>`;
+                        meta.appendChild(el);
+                    });
+                    subEl.after(divider);
+                    divider.after(meta);
+                }
             }
 
             btnRow.innerHTML = '';
@@ -1677,6 +1698,7 @@
                 secondaryText: 'STAY',
                 dismissOnOverlay: false,
                 onPrimary: () => {
+                    isExiting = true;
                     socket.emit('leave-room');
                     document.getElementById('my-hand').innerHTML = '';
                     document.getElementById('comm-ui').innerHTML = '';
@@ -2014,12 +2036,10 @@
             });
 
         socket.on('update', (room) => {
-            // Hide Lobby, Show Game
             if (isExiting) return;
-            showScreen('game');
-
             const me = room.players[socket.id];
-            if(!me) return;
+            if (!me) return;
+            showScreen('game');
 
             const handFinished = room.status !== 'playing';
             if (handFinished && me.chips <= 0 && !zeroChipsModalOpen) {
@@ -2120,17 +2140,25 @@
             const won = d.win === socket.id;
             const n = Number(d.amount);
             const amtStr = won && Number.isFinite(n) && n > 0 ? `+$${n.toLocaleString()}` : '';
-            const handLabel = d.hand || '—';
             const potStr = Number.isFinite(n) && n > 0 ? `$${n.toLocaleString()}` : '—';
+            const foldWin = d.msg === 'Folds';
+            const myHand = d.myHand || null;
+            const winnerHand = d.winnerHand || null;
+
             showAppModal({
                 variant: won ? 'win' : 'lose',
-                kicker: won ? 'HAND RESULT' : 'HAND RESULT',
+                kicker: 'HAND RESULT',
                 title: won ? 'YOU WIN' : 'HAND LOST',
-                sub: won ? amtStr : (d.hand || 'better luck next time'),
-                meta: won ? [
-                    { label: 'POT', value: potStr },
-                    { label: 'HAND', value: handLabel },
-                ] : [],
+                sub: won ? amtStr : (myHand || '—'),
+                meta: won
+                    ? [
+                        { label: 'POT',  value: potStr },
+                        { label: 'HAND', value: foldWin ? 'OPPONENT FOLDED' : (myHand || '—') },
+                      ]
+                    : [
+                        { label: 'YOUR HAND',     value: myHand     || '—' },
+                        { label: "WINNER'S HAND",  value: foldWin ? '—' : (winnerHand || '—') },
+                      ],
                 primaryText: 'CONTINUE',
                 autoCloseMs: won ? 5000 : 3400,
                 dismissOnOverlay: true
