@@ -780,6 +780,7 @@ io.on('connection', (socket) => {
                     msg: reason,
                     myHand,
                     winnerHand,
+                    winnerUsername: winner.username,
                 });
             }
         });

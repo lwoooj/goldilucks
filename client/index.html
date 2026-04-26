@@ -2143,21 +2143,20 @@
             const potStr = Number.isFinite(n) && n > 0 ? `$${n.toLocaleString()}` : '—';
             const foldWin = d.msg === 'Folds';
             const myHand = d.myHand || null;
-            const winnerHand = d.winnerHand || null;
+            const winnerUsername = d.winnerUsername || '—';
 
             showAppModal({
                 variant: won ? 'win' : 'lose',
                 kicker: 'HAND RESULT',
                 title: won ? 'YOU WIN' : 'HAND LOST',
-                sub: won ? amtStr : (myHand || '—'),
+                sub: won ? amtStr : winnerUsername,
                 meta: won
                     ? [
                         { label: 'POT',  value: potStr },
                         { label: 'HAND', value: foldWin ? 'OPPONENT FOLDED' : (myHand || '—') },
                       ]
                     : [
-                        { label: 'YOUR HAND',     value: myHand     || '—' },
-                        { label: "WINNER'S HAND",  value: foldWin ? '—' : (winnerHand || '—') },
+                        { label: 'WINNER', value: winnerUsername },
                       ],
                 primaryText: 'CONTINUE',
                 autoCloseMs: won ? 5000 : 3400,
