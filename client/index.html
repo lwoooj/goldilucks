@@ -14,11 +14,17 @@
             0%   { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .revolver-spinning {
+            animation: revolver-spin 0.9s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+        }
         body { background: var(--dark-bg); color: white; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; overflow: hidden; }
         .hidden { display: none !important; }
 
-        #auth-container, #lobby, #matchmaking, #team-menu, #ranking-menu {
+        #auth-container, #lobby, #team-menu, #ranking-menu {
             transition: opacity 240ms ease, transform 240ms ease;
+        }
+        #matchmaking {
+            transition: opacity 240ms ease;
         }
 
         #game {
@@ -818,7 +824,8 @@
         </div>
     </div>
 
-    <div id="matchmaking" class="hidden" style="width: 480px; margin-top: 80px; padding: 50px 40px; background: rgba(255,255,255,0.03); border-radius: 20px; border: 1px solid #333; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 30px;">
+    <div id="matchmaking" class="hidden" style="position: fixed; inset: 0; z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--dark-bg);">
+        <div style="width: 400px; padding: 50px 40px; background: rgba(255,255,255,0.03); border-radius: 20px; border: 1px solid #333; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 30px;">
         <div>
             <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 3px; margin-bottom: 12px;">MATCHMAKING</p>
             <h2 style="font-size: 1.6rem; font-weight: 900; color: white; margin: 0;">FINDING A TABLE</h2>
@@ -852,6 +859,7 @@
                 onmouseout="this.style.borderColor='#444'; this.style.color='#666'">
             CANCEL
         </button>
+        </div>
     </div>
 
     <div id="game" class="hidden">
@@ -1164,7 +1172,7 @@
 
             target.classList.remove('hidden');
             target.style.opacity = '0';
-            if (screenId !== 'game') {
+            if (screenId !== 'game' && screenId !== 'matchmaking') {
                 target.style.transform = 'translateY(12px)';
             } else {
                 target.style.transform = 'none';
@@ -1184,13 +1192,16 @@
                     target.style.display = 'grid';
                 } else if (screenId === 'auth-container') {
                     target.style.display = 'block';
+                } else if (screenId === 'matchmaking') {
+                    target.style.display = 'flex';
+                    target.style.transform = 'none'; // fixed overlay, no translateY
                 } else {
                     target.style.display = 'block';
                 }
 
             requestAnimationFrame(() => {
                 target.style.opacity = '1';
-                if (screenId !== 'game') {
+                if (screenId !== 'game' && screenId !== 'matchmaking') {
                     target.style.transform = 'translateY(0)';
                 }
             });
@@ -1590,13 +1601,18 @@
 
         // ── MATCHMAKING ──────────────────────────────────────────────
         let queueDotsTimer = null;
+        let matchFoundPending = false;
+        let matchFoundAt = 0;
+        const SPIN_DURATION_MS = 950; // slightly longer than CSS animation
 
         function joinQueue() {
             socket.emit('join-queue');
             showScreen('matchmaking');
+            matchFoundPending = false;
             // Reset revolver image
             const img = document.getElementById('revolver-img');
             if (img) {
+                img.classList.remove('revolver-spinning');
                 img.style.transition = 'opacity 0.35s ease';
                 img.style.transform = 'rotate(0deg)';
                 img.src = 'asset/bullet1.png';
@@ -1659,21 +1675,31 @@
 
         socket.on('match-found', () => {
             if (queueDotsTimer) clearInterval(queueDotsTimer);
+            matchFoundPending = true;
+            matchFoundAt = Date.now();
+
             const dotsEl = document.getElementById('queue-dots');
             if (dotsEl) dotsEl.innerText = 'MATCH FOUND';
+
             const img = document.getElementById('revolver-img');
             if (img) {
-                // Make sure bullet6 is showing, then spin once before game loads
+                // Ensure bullet6 is loaded and visible, then add spin class
+                img.classList.remove('revolver-spinning');
+                img.style.opacity = '0';
                 img.src = 'asset/bullet6.png';
-                img.style.opacity = '1';
-                img.style.transition = 'opacity 0.35s ease';
-                // Short delay so the image renders, then spin
-                setTimeout(() => {
-                    img.style.transition = 'opacity 0.35s ease, transform 0.7s cubic-bezier(0.4, 0, 0.2, 1)';
-                    img.style.transform = 'rotate(360deg)';
-                }, 50);
+                img.onload = () => {
+                    img.style.opacity = '1';
+                    // Force reflow so animation starts from 0
+                    void img.offsetWidth;
+                    img.classList.add('revolver-spinning');
+                };
+                // Fallback if image already cached
+                if (img.complete) {
+                    img.style.opacity = '1';
+                    void img.offsetWidth;
+                    img.classList.add('revolver-spinning');
+                }
             }
-            // Game screen transition is handled by the existing 'update' event from the server
         });
         // ─────────────────────────────────────────────────────────────
 
@@ -2073,7 +2099,17 @@
             if (isExiting) return;
             const me = room.players[socket.id];
             if (!me) return;
-            showScreen('game');
+
+            if (matchFoundPending) {
+                const elapsed = Date.now() - matchFoundAt;
+                const remaining = Math.max(0, SPIN_DURATION_MS - elapsed);
+                setTimeout(() => {
+                    matchFoundPending = false;
+                    showScreen('game');
+                }, remaining);
+            } else {
+                showScreen('game');
+            }
 
             const handFinished = room.status !== 'playing';
             if (handFinished && me.chips <= 0 && !zeroChipsModalOpen) {
