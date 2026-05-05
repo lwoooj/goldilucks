@@ -695,7 +695,7 @@
 
         <div id="team-member-view" class="hidden">
             
-            <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 20px; min-height: 0;">
                 <div style="padding-left: 10px; flex-shrink: 0; display: flex; align-items: center; gap: 12px;">
                     <div>
                         <h2 id="team-title-ui" style="color: var(--uci-gold); font-size: 1.8rem; line-height: 1.1; margin-bottom: 5px;">---</h2>
@@ -722,13 +722,13 @@
                 </div>
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 25px; border: 1px solid #333; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+            <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 25px; border: 1px solid #333; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; min-height: 0;">
                 <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; margin-bottom: 20px; opacity: 0.7; flex-shrink: 0;">MEMBERS</p>
                 <div id="member-list-ui" style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex-grow: 1; min-height: 0;"></div>
                 <button onclick="showScreen('lobby')" style="margin-top: 20px; background: none; border: none; color: #666; cursor: pointer; text-decoration: underline; font-size: 0.8rem; flex-shrink: 0;">back to dashboard</button>
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 30px; border: 1px solid #333; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+            <div style="background: rgba(0,0,0,0.2); border-radius: 15px; padding: 30px; border: 1px solid #333; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; min-height: 0;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-shrink: 0;">
                     <div>
                         <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; opacity: 0.7;">PERFORMANCE INDEX</p>
@@ -746,7 +746,7 @@
                         </button>
                     </div>
                 </div>
-                <div style="flex: 1; width: 100%; min-height: 0;">
+                <div style="flex: 1; width: 100%; min-height: 0; position: relative;">
                     <canvas id="teamPerformanceChart" style="width: 100%; height: 100%; display: block;"></canvas>
                 </div>
             </div>
