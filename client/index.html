@@ -623,14 +623,9 @@
             <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
                 <div>
                     <h2 style="color: var(--uci-blue);">PERFORMANCE OVERVIEW</h2>
-                    <p id="ranking-interval-label" style="color: #666; font-size: 0.7rem; letter-spacing: 1px;">TOP 5 TEAMS // 5 MIN UPDATES</p>
+                    <p id="ranking-interval-label" style="color: #666; font-size: 0.7rem; letter-spacing: 1px;">TOP 5 TEAMS // UPDATES EVERY 5 MIN</p>
                 </div>
-                <button id="ranking-interval-btn" class="graph-interval-btn" onclick="cycleGraphInterval()"
-                    style="background: none; border: 1px solid #444; color: #888; font-size: 0.65rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;"
-                    onmouseover="this.style.borderColor='var(--uci-blue)'; this.style.color='var(--uci-blue)'"
-                    onmouseout="this.style.borderColor='#444'; this.style.color='#888'">
-                    5 MIN
-                </button>
+                
             </div>
             <div style="flex-grow: 1; position: relative; min-height: 0;">
                 <canvas id="globalRankingChart"></canvas>
@@ -733,17 +728,12 @@
                     <div>
                         <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; opacity: 0.7;">PERFORMANCE INDEX</p>
                         <div id="team-growth-ui" style="font-size: 2.2rem; color: #4caf50; font-weight: 900; margin-top: 5px;">0.0%</div>
-                        <p id="team-interval-label" style="color: #666; font-size: 0.62rem; letter-spacing: 1px; margin-top: 4px;">5 MIN UPDATES</p>
+                        <p id="team-interval-label" style="color: #666; font-size: 0.62rem; letter-spacing: 1px; margin-top: 4px;">UPDATES EVERY 5 MIN</p>
                     </div>
                     <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
                         <p style="color: var(--uci-gold); font-size: 0.7rem; letter-spacing: 1.5px; opacity: 0.7;">TEAM VAULT</p>
                         <div id="team-vault-ui" style="font-size: 1.1rem; font-weight: 900; padding-top: 5px; color: #888;">$0</div>
-                        <button id="team-interval-btn" class="graph-interval-btn" onclick="cycleGraphInterval()"
-                            style="background: none; border: 1px solid #444; color: #888; font-size: 0.65rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;"
-                            onmouseover="this.style.borderColor='var(--uci-gold)'; this.style.color='var(--uci-gold)'"
-                            onmouseout="this.style.borderColor='#444'; this.style.color='#888'">
-                            5 MIN
-                        </button>
+                        
                     </div>
                 </div>
                 <div style="flex: 1; width: 100%; min-height: 0; position: relative;">
@@ -949,39 +939,51 @@
         let chipHistory = JSON.parse(localStorage.getItem('poker_history')) || [10000];
         const socket = io(window.location.origin);
 
-        const GRAPH_INTERVALS = [
-            { label: '5 MIN', ms: 5 * 60 * 1000 },
-            { label: '1 HR', ms: 60 * 60 * 1000 },
-            { label: '12 HR', ms: 12 * 60 * 60 * 1000 }
-        ];
-        let activeGraphIntervalIndex = 0;
+        const GRAPH_REFRESH_MS = 5 * 60 * 1000;
         let graphRefreshTimer = null;
 
-        function getActiveGraphInterval() {
-            return GRAPH_INTERVALS[activeGraphIntervalIndex];
-        }
-
-        function graphSocketPayload() {
-            return { intervalMs: getActiveGraphInterval().ms };
-        }
-
+        // Converts raw server history into 12 normalised 5-min buckets (1 hour)
         function normalizeTeamHistoryForChart(raw) {
-            if (!Array.isArray(raw) || raw.length === 0) return [];
-            if (typeof raw[0] === 'number') {
-                const now = Date.now();
-                const step = 5 * 60 * 1000;
-                return raw.map((v, i) => ({
-                    x: now - (raw.length - 1 - i) * step,
-                    y: v
-                }));
+            const BUCKETS = 12;
+            const STEP = 5 * 60 * 1000;
+
+            // Normalise raw points to [{t, v}]
+            let points = [];
+            if (Array.isArray(raw) && raw.length > 0) {
+                if (typeof raw[0] === 'number') {
+                    const now = Date.now();
+                    points = raw.map((v, i) => ({
+                        t: now - (raw.length - 1 - i) * STEP,
+                        v: Number(v)
+                    }));
+                } else {
+                    points = raw
+                        .map(p => (p && p.t != null && p.v != null)
+                            ? { t: Number(p.t), v: Number(p.v) } : null)
+                        .filter(p => p && Number.isFinite(p.t) && Number.isFinite(p.v))
+                        .sort((a, b) => a.t - b.t);
+                }
             }
-            return raw
-                .map((p) => {
-                    if (!p || typeof p !== 'object' || p.t == null || p.v == null) return null;
-                    return { x: Number(p.t), y: Number(p.v) };
-                })
-                .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
-                .sort((a, b) => a.x - b.x);
+
+            // Align 'now' to the nearest 5-min floor
+            const now = Date.now();
+            const flooredNow = Math.floor(now / STEP) * STEP;
+
+            // Build 12 buckets working backwards
+            const result = [];
+            for (let i = BUCKETS - 1; i >= 0; i--) {
+                const bucketStart = flooredNow - i * STEP;
+                const bucketEnd   = bucketStart + STEP;
+                const inBucket    = points.filter(p => p.t >= bucketStart && p.t < bucketEnd);
+                const value       = inBucket.length > 0
+                    ? inBucket[inBucket.length - 1].v   // latest point in window
+                    : (result.length > 0 ? result[result.length - 1].y : 0); // carry forward
+                result.push({
+                    x: new Date(bucketStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    y: value
+                });
+            }
+            return result;
         }
 
         function formatGraphTooltipTime(ms) {
@@ -1006,18 +1008,7 @@
             };
         }
 
-        function updateGraphIntervalUI() {
-            const { label } = getActiveGraphInterval();
-            document.querySelectorAll('.graph-interval-btn').forEach((btn) => {
-                btn.innerText = label;
-            });
 
-            const rankingIntervalLabel = document.getElementById('ranking-interval-label');
-            if (rankingIntervalLabel) rankingIntervalLabel.innerText = `TOP 5 TEAMS // ${label} UPDATES`;
-
-            const teamIntervalLabel = document.getElementById('team-interval-label');
-            if (teamIntervalLabel) teamIntervalLabel.innerText = `${label} UPDATES`;
-        }
 
         function refreshTimedGraphs() {
             const rankingMenu = document.getElementById('ranking-menu');
@@ -1028,25 +1019,19 @@
             const teamGraphVisible = teamMenu && !teamMenu.classList.contains('hidden') &&
                 teamMemberView && !teamMemberView.classList.contains('hidden') && myTeamCode;
 
-            if (rankingVisible) socket.emit('request-global-rankings', graphSocketPayload());
-            if (teamGraphVisible) socket.emit('request-team-details', { code: myTeamCode, ...graphSocketPayload() });
+            if (rankingVisible) socket.emit('request-global-rankings');
+            if (teamGraphVisible) socket.emit('request-team-details', { code: myTeamCode });
         }
 
         function restartGraphRefreshTimer() {
             if (graphRefreshTimer) clearInterval(graphRefreshTimer);
-            graphRefreshTimer = setInterval(refreshTimedGraphs, getActiveGraphInterval().ms);
+            graphRefreshTimer = setInterval(refreshTimedGraphs, GRAPH_REFRESH_MS);
         }
 
-        function cycleGraphInterval() {
-            activeGraphIntervalIndex = (activeGraphIntervalIndex + 1) % GRAPH_INTERVALS.length;
-            updateGraphIntervalUI();
-            restartGraphRefreshTimer();
-            refreshTimedGraphs();
-        }
+
 
         window.onload = () => {
             initChart();
-            updateGraphIntervalUI();
             restartGraphRefreshTimer();
         };
 
@@ -1064,7 +1049,7 @@
             }
 
             showScreen('ranking-menu');
-            socket.emit('request-global-rankings', graphSocketPayload());
+            socket.emit('request-global-rankings', );
         }
 
         function showTeamMenu() {
@@ -1093,59 +1078,103 @@
                 `;
             }).join('');
 
-            initGlobalRankingChart(data.topFive);
+            // Re-render chart only when top-5 composition or order changes
+            const newKey = (data.topFive || []).map(t => t.name).join(',');
+            if (newKey !== lastTopFiveKey || !globalRankingChart) {
+                lastTopFiveKey = newKey;
+                initGlobalRankingChart(data.topFive);
+            } else {
+                // Same teams — just update the data in place
+                (data.topFive || []).forEach((team, i) => {
+                    if (globalRankingChart.data.datasets[i]) {
+                        const pts = normalizeTeamHistoryForChart(team.history);
+                        globalRankingChart.data.labels = pts.map(p => p.x);
+                        globalRankingChart.data.datasets[i].data = pts.map(p => p.y);
+                    }
+                });
+                globalRankingChart.update('none');
+            }
         });
+
+                // Track last top-5 to detect ranking changes
+        let lastTopFiveKey = '';
 
         function initGlobalRankingChart(topFive) {
             const ctx = document.getElementById('globalRankingChart').getContext('2d');
             if (globalRankingChart) globalRankingChart.destroy();
 
-            const chartColors = ['#ffd200', '#0064a4', '#4caf50', '#f44336', '#9c27b0'];
+            const chartColors = ['#4caf50', '#ffd200', '#0064a4', '#f44336', '#9c27b0'];
+            const BUCKETS = 12;
+
+            // All teams share the same 12 time-bucket labels
+            const samplePoints = topFive.length > 0
+                ? normalizeTeamHistoryForChart(topFive[0].history)
+                : [];
+            const labels = samplePoints.map(p => p.x);
 
             const datasets = topFive.map((team, i) => {
                 const pts = normalizeTeamHistoryForChart(team.history);
+                const values = pts.map(p => p.y);
+                const isPositive = values.length === 0 || values[values.length - 1] >= 0;
                 return {
-                label: team.name,
-                data: pts.length ? pts : [{ x: Date.now(), y: typeof team.growth === 'number' ? team.growth : 0 }],
-                parsing: false,
-                borderColor: chartColors[i],
-                backgroundColor: chartColors[i],
-                borderWidth: 2,
-                tension: 0.3,
-                pointRadius: 3,
-                fill: false
-            };
+                    label: team.name,
+                    data: values,
+                    borderColor: chartColors[i % chartColors.length],
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0,
+                    pointRadius: 3,
+                    pointHitRadius: 10,
+                    borderWidth: 2,
+                    spanGaps: true
+                };
             });
 
             globalRankingChart = new Chart(ctx, {
                 type: 'line',
-                data: { datasets },
+                data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'nearest', intersect: true, axis: 'x' },
+                    layout: { padding: { left: 5, right: 5 } },
                     scales: {
                         x: {
-                            type: 'linear',
                             display: false,
                             grid: { display: false }
                         },
-                        y: { 
-                            grid: { color: '#222' }, 
-                            ticks: { color: '#888', callback: v => v + '%' } 
+                        y: {
+                            grid: { color: '#222' },
+                            ticks: {
+                                color: '#888',
+                                font: { size: 10 },
+                                callback: v => v + '%'
+                            },
+                            beginAtZero: false
                         }
                     },
                     plugins: {
                         legend: {
                             display: true,
                             position: 'bottom',
-                            labels: { color: '#888', font: { size: 10 }, usePointStyle: true }
+                            labels: { color: '#888', font: { size: 10 }, boxWidth: 12 }
                         },
-                        tooltip: graphLineTooltipOptions()
+                        tooltip: {
+                            displayColors: true,
+                            intersect: false,
+                            mode: 'index',
+                            callbacks: {
+                                title: items => items.length ? labels[items[0].dataIndex] : '',
+                                label: item => {
+                                    const v = item.parsed.y;
+                                    return item.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+                                }
+                            }
+                        }
                     }
                 }
             });
         }
+
 
         socket.on('receive-team-message', (data) => {
             const display = document.getElementById('team-chat-display');
@@ -1418,7 +1447,7 @@
                 memberView.classList.remove('hidden');
                 
                 socket.emit('join-team-chat', myTeamCode);
-                socket.emit('request-team-details', { code: myTeamCode, ...graphSocketPayload() });
+                socket.emit('request-team-details', { code: myTeamCode });
                 
                 if (teamPerformanceChart) {
                     setTimeout(() => teamPerformanceChart.resize(), 0);
@@ -1481,56 +1510,70 @@
 
         let teamChipHistory = [0]; 
 
-        function initTeamChart(historyData) {
+                function initTeamChart(historyData) {
             const ctx = document.getElementById('teamPerformanceChart').getContext('2d');
-            
-            if (teamPerformanceChart) {
-                teamPerformanceChart.destroy();
-            }
+            if (teamPerformanceChart) teamPerformanceChart.destroy();
 
             const points = normalizeTeamHistoryForChart(historyData);
-            const chartPoints = points.length ? points : [{ x: Date.now(), y: 0 }];
+            const labels = points.map(p => p.x);
+            const values = points.map(p => p.y);
+            const isPositive = values.length === 0 || values[values.length - 1] >= 0;
 
             teamPerformanceChart = new Chart(ctx, {
                 type: 'line',
                 data: {
+                    labels,
                     datasets: [{
-                        label: 'Avg Member Growth %',
-                        data: chartPoints,
-                        parsing: false,
-                        borderColor: '#ffd200',
-                        backgroundColor: 'rgba(255, 210, 0, 0.1)',
-                        fill: true,
-                        tension: 0.3,
+                        label: 'Avg Growth %',
+                        data: values,
+                        borderColor: isPositive ? '#4caf50' : '#f44336',
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 4,
+                        pointHitRadius: 10,
                         borderWidth: 2,
-                        pointRadius: 3
+                        spanGaps: true
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'nearest', intersect: true, axis: 'x' },
+                    layout: { padding: { left: 5, right: 5 } },
                     scales: {
                         x: {
-                            type: 'linear',
                             display: false,
                             grid: { display: false }
                         },
-                        y: { 
-                            grid: { color: '#222' }, 
-                            ticks: { 
+                        y: {
+                            grid: { color: '#222' },
+                            ticks: {
                                 color: '#888',
-                                callback: function(value) { return value + '%'; }
-                            } 
+                                font: { size: 10 },
+                                callback: v => v + '%'
+                            },
+                            beginAtZero: false
                         }
                     },
-                    plugins: { 
+                    plugins: {
                         legend: { display: false },
-                        tooltip: graphLineTooltipOptions()
+                        tooltip: {
+                            displayColors: false,
+                            intersect: false,
+                            mode: 'index',
+                            callbacks: {
+                                title: items => items.length ? labels[items[0].dataIndex] : '',
+                                label: item => {
+                                    const v = item.parsed.y;
+                                    return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+                                }
+                            }
+                        }
                     }
                 }
             });
         }
+
 
         function animateValue(el, from, to, formatter, duration = 1200) {
             if (!el) return;
@@ -1945,7 +1988,7 @@
             toggleJoinModal(false);
             myTeamCode = data.code;
             showScreen('team-menu');
-            socket.emit('request-team-details', { code: data.code, ...graphSocketPayload() });
+            socket.emit('request-team-details', { code: data.code });
             handleTeamViewLogic();
         });
 
@@ -1980,7 +2023,7 @@
         socket.on('team-transfer-success', (data) => {
             if (!data || data.teamCode !== myTeamCode) return;
             showPopup(`${data.from} sent $${Number(data.amount).toLocaleString()} to ${data.to}`, 'gold');
-            socket.emit('request-team-details', { code: myTeamCode, ...graphSocketPayload() });
+            socket.emit('request-team-details', { code: myTeamCode });
         });
 
         socket.on('lobby-list', (data) => {
@@ -2077,7 +2120,17 @@
                     `;
                 }).join('');
 
-                initTeamChart(data.history || []);
+                const newPts = normalizeTeamHistoryForChart(data.history || []);
+                if (teamPerformanceChart) {
+                    // Update in place — no flicker
+                    const isPositive = newPts.length === 0 || newPts[newPts.length - 1].y >= 0;
+                    teamPerformanceChart.data.labels = newPts.map(p => p.x);
+                    teamPerformanceChart.data.datasets[0].data = newPts.map(p => p.y);
+                    teamPerformanceChart.data.datasets[0].borderColor = isPositive ? '#4caf50' : '#f44336';
+                    teamPerformanceChart.update('none');
+                } else {
+                    initTeamChart(data.history || []);
+                }
             });
 
         socket.on('update', (room) => {

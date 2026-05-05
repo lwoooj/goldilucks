@@ -56,7 +56,7 @@ function toOneDecimal(value) {
 }
 
 const DEFAULT_GRAPH_INTERVAL_MS = 5 * 60 * 1000;
-const MAX_HISTORY_POINTS = 14;
+const MAX_HISTORY_POINTS = 12;
 
 function normalizePerformanceHistory(raw) {
     if (!Array.isArray(raw) || raw.length === 0) return [];
@@ -129,13 +129,6 @@ async function syncTeamPerformanceHistory(team, currentGrowth, intervalMs) {
     return normalizePerformanceHistory(team.performanceHistory);
 }
 
-function parseGraphIntervalMs(payload) {
-    if (payload && typeof payload === 'object' && payload.intervalMs != null) {
-        const ms = Number(payload.intervalMs);
-        if (Number.isFinite(ms) && ms > 0) return ms;
-    }
-    return DEFAULT_GRAPH_INTERVAL_MS;
-}
 
 function getDisplayHistoryPoints(team, avgGrowth) {
     const points = normalizePerformanceHistory(team.performanceHistory);
@@ -369,6 +362,26 @@ function getHandName(score) {
     return 'HIGH CARD';
 }
 
+
+// ── 5-MINUTE PERFORMANCE SNAPSHOT CRON ──────────────────────────────────────
+// Runs every 5 minutes regardless of user activity, snapshotting every team.
+setInterval(async () => {
+    try {
+        const teams = await Team.find({});
+        await Promise.all(teams.map(async (team) => {
+            const members = await User.find({ username: { $in: team.members } });
+            if (members.length === 0) return;
+            const avgGrowth = members.reduce((sum, m) =>
+                sum + (((m.bankroll ?? 10000) / 10000) - 1) * 100, 0) / members.length;
+            await syncTeamPerformanceHistory(team, avgGrowth, DEFAULT_GRAPH_INTERVAL_MS);
+        }));
+        // Broadcast fresh rankings to all connected clients
+        io.emit('global-rankings-data', await getGlobalRankingsPayload(DEFAULT_GRAPH_INTERVAL_MS, false));
+    } catch (err) {
+        console.error('5-min cron error:', err);
+    }
+}, DEFAULT_GRAPH_INTERVAL_MS);
+
 io.on('connection', (socket) => {
     const broadcastLobbyList = () => {
         const roomData = Object.keys(rooms).map(id => ({ 
@@ -470,20 +483,18 @@ io.on('connection', (socket) => {
         }
     });
     
-    socket.on('request-global-rankings', async (payload) => {
-        const intervalMs = parseGraphIntervalMs(payload);
-        socket.emit('global-rankings-data', await getGlobalRankingsPayload(intervalMs));
+    socket.on('request-global-rankings', async () => {
+        socket.emit('global-rankings-data', await getGlobalRankingsPayload(DEFAULT_GRAPH_INTERVAL_MS, false));
     });
 
     socket.on('request-team-details', async (payload) => {
         try {
             const code = typeof payload === 'string' ? payload : payload?.code;
-            const intervalMs = parseGraphIntervalMs(typeof payload === 'object' ? payload : null);
             if (!code) return;
 
             const team = await Team.findOne({ code });
             if (!team) return;
-            const metrics = await buildTeamMetrics(team, intervalMs);
+            const metrics = await buildTeamMetrics(team, DEFAULT_GRAPH_INTERVAL_MS, false);
 
             socket.emit('team-details-response', {
                 name: team.name,
